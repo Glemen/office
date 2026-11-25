@@ -330,11 +330,13 @@ const elResTitle = document.getElementById('res-dialog-title');
 const elResMeta = document.getElementById('res-dialog-meta');
 const elResContent = document.getElementById('res-dialog-content');
 const elResFile = document.getElementById('res-dialog-file');
-const btnResDownload = document.getElementById('btn-res-download');
+const btnResDocx = document.getElementById('btn-res-docx');
+const btnResPdf = document.getElementById('btn-res-pdf');
 
 const elSetDialog = document.getElementById('settings-dialog');
 const elSetForm = document.getElementById('settings-form');
 const elCfgProvider = document.getElementById('cfg-provider');
+const elCfgAgyModel = document.getElementById('cfg-agy-model');
 const elCfgGeminiKey = document.getElementById('cfg-gemini-key');
 const elCfgGeminiModel = document.getElementById('cfg-gemini-model');
 const elCfgOpenaiUrl = document.getElementById('cfg-openai-url');
@@ -444,9 +446,11 @@ async function openResult(resultId) {
     elResTitle.textContent = data.task;
     elResMeta.textContent = `Hoàn thành lúc ${data.completedAt}`;
     elResContent.innerHTML = renderMarkdownSafe(data.content || '');
-    elResFile.textContent = `results/${data.filename}`;
-    btnResDownload.href = `/results/${encodeURIComponent(data.filename)}`;
-    btnResDownload.setAttribute('download', data.filename);
+    const docxName = data.docxFilename || `${data.id}.docx`;
+    elResFile.textContent = `results/${docxName}`;
+    btnResDocx.href = `/api/result/${encodeURIComponent(data.id)}/docx`;
+    btnResDocx.setAttribute('download', docxName);
+    btnResPdf.href = `/api/result/${encodeURIComponent(data.id)}/print`;
     elResDialog.showModal();
   } catch (err) {
     showToast(`Lỗi mở văn bản: ${err.message}`);
@@ -460,43 +464,20 @@ document.getElementById('btn-res-copy').addEventListener('click', async () => {
   showToast('Đã copy toàn bộ văn bản!');
 });
 
-document.getElementById('btn-res-word').addEventListener('click', () => {
-  if (!currentDialogData) return;
-  const htmlBody = renderMarkdownSafe(currentDialogData.content || '');
-  const wordDoc = `<!DOCTYPE html>
-<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" lang="vi">
-<head><meta charset="utf-8"><title>${currentDialogData.task}</title>
-<style>
-  body { font-family: "Times New Roman", serif; font-size: 13pt; line-height: 1.5; color: #111; margin: 2cm; }
-  h1 { font-size: 16pt; margin-bottom: 10pt; }
-  h2 { font-size: 14pt; margin-top: 14pt; }
-  h3 { font-size: 13pt; margin-top: 10pt; }
-  p, li { margin: 5pt 0; }
-</style></head>
-<body>${htmlBody}</body></html>`;
-  const blob = new Blob(['\ufeff', wordDoc], { type: 'application/msword;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = currentDialogData.filename.replace(/\.md$/, '.doc');
-  a.click();
-  URL.revokeObjectURL(url);
-  showToast('Đã tải file Word (.doc) — mở trực tiếp bằng Microsoft Word!');
-});
-
 async function openSettings() {
   try {
     const resp = await fetch('/api/config');
     const cfg = await resp.json();
     elCfgProvider.value = cfg.provider || 'auto';
+    elCfgAgyModel.value = cfg.antigravityModel || 'pro';
     elCfgGeminiKey.value = '';
     elCfgGeminiKey.placeholder = cfg.hasGeminiKey ? 'Đã lưu key (nhập mới để thay)' : 'AIza...';
-    elCfgGeminiModel.value = cfg.geminiModel || 'gemini-2.5-flash';
+    elCfgGeminiModel.value = cfg.geminiModel || 'gemini-2.5-pro';
     elCfgOpenaiUrl.value = cfg.openaiBaseUrl || 'http://localhost:11434/v1';
     elCfgOpenaiModel.value = cfg.openaiModel || 'qwen2.5:7b';
     elCfgOpenaiKey.value = '';
     elCfgArchiveAgy.checked = cfg.archiveAntigravity !== false;
-    elCfgStatusHint.textContent = `Đang dùng: ${cfg.activeProvider.toUpperCase()}`;
+    elCfgStatusHint.textContent = `Đang dùng: ${cfg.activeProvider.toUpperCase()} (${(cfg.antigravityModel || 'pro').toUpperCase()})`;
     elSetDialog.showModal();
   } catch {
     showToast('Không tải được cấu hình AI');
@@ -511,6 +492,7 @@ elSetForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const payload = {
     provider: elCfgProvider.value,
+    antigravityModel: elCfgAgyModel.value,
     geminiApiKey: elCfgGeminiKey.value.trim(),
     geminiModel: elCfgGeminiModel.value.trim(),
     openaiBaseUrl: elCfgOpenaiUrl.value.trim(),

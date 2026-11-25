@@ -172,8 +172,8 @@
       <span class="mono res-path" id="res-dialog-file">results/...</span>
       <div class="modal-foot-btns">
         <button type="button" class="btn-outline" id="btn-res-copy">Copy</button>
-        <button type="button" class="btn-outline" id="btn-res-word">Tải Word (.doc)</button>
-        <a class="btn-primary" id="btn-res-download" download>Tải .md</a>
+        <a class="btn-outline" id="btn-res-pdf" target="_blank" rel="noopener">In / PDF chuẩn NĐ30</a>
+        <a class="btn-primary" id="btn-res-docx" download>Tải Word (.docx)</a>
       </div>
     </div>
   </dialog>
@@ -202,13 +202,21 @@
         </div>
 
         <div class="form-field">
+          <label for="cfg-agy-model">Model Antigravity (khi chạy Antigravity Live)</label>
+          <select id="cfg-agy-model">
+            <option value="pro">Pro / Neon Medium (Mạnh nhất — Khuyên dùng cho văn bản)</option>
+            <option value="flash">Flash (Nhanh, tiết kiệm)</option>
+          </select>
+        </div>
+
+        <div class="form-field">
           <label for="cfg-gemini-key">Google Gemini API Key (để trống nếu giữ nguyên)</label>
           <input id="cfg-gemini-key" type="password" placeholder="AIza..." autocomplete="off" />
         </div>
 
         <div class="form-field">
           <label for="cfg-gemini-model">Model Gemini</label>
-          <input id="cfg-gemini-model" type="text" value="gemini-2.5-flash" />
+          <input id="cfg-gemini-model" type="text" value="gemini-2.5-pro" />
         </div>
 
         <div class="form-field">

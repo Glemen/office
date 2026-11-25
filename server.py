@@ -23,6 +23,8 @@ from datetime import datetime
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from docx_nd30 import build_docx, doc_data_to_markdown, normalize_doc_data, render_nd30_print_html
+
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("OFFICE_PORT", "8080"))
 IS_FROZEN = getattr(sys, "frozen", False)
@@ -110,8 +112,9 @@ CONFIG = load_json(
     CONFIG_FILE,
     {
         "provider": "auto",  # auto | antigravity | gemini | openai
+        "antigravityModel": "pro",  # pro (Neon Medium / mạnh nhất) | flash
         "geminiApiKey": os.environ.get("GEMINI_API_KEY", ""),
-        "geminiModel": "gemini-2.5-flash",
+        "geminiModel": "gemini-2.5-pro",
         "openaiBaseUrl": "http://localhost:11434/v1",
         "openaiApiKey": os.environ.get("OPENAI_API_KEY", ""),
         "openaiModel": "qwen2.5:7b",
@@ -230,9 +233,10 @@ def call_antigravity(title: str, prompt: str, target_file: Path) -> str:
         f"- Ghi toàn bộ văn bản hoàn chỉnh (Markdown sạch, rõ ràng) vào file: `{target_file}` bằng công cụ `write_file` (Overwrite=true).\n"
         f"- Sau khi ghi xong, trả lời ngắn gọn xác nhận."
     )
+    agy_model = (CONFIG.get("antigravityModel") or "pro").strip()
     payload = {
         "title": title[:65],
-        "model": "flash",
+        "model": agy_model,
         "tags": ["doc-studio-3d"],
         "prompt": [{"text": full_prompt}],
     }
@@ -332,19 +336,55 @@ def run_ai(title: str, prompt: str, target_file: Path) -> str:
     )
 
 
-def record_deliverable(worker_idx: int, task_text: str, filename: str, content: str, mode_label: str) -> dict:
+ND30_JSON_SCHEMA_HINT = """
+BẮT BUỘC trả về kết quả duy nhất dưới dạng 1 khối ```json ... ``` hợp lệ theo chuẩn Nghị định 30/2020/NĐ-CP của Chính phủ về công tác văn thư:
+```json
+{
+  "loai_van_ban": "van_ban_co_ten_loai hoặc cong_van (dùng cong_van nếu là Công văn có V/v, còn lại dùng van_ban_co_ten_loai cho Báo cáo, Kế hoạch, Tờ trình, Quyết định, Thông báo, Đề án, Biên bản...)",
+  "co_quan_chu_quan": "Tên cơ quan chủ quản cấp trên IN HOA (hoặc chuỗi rỗng nếu không có)",
+  "co_quan_ban_hanh": "TÊN CƠ QUAN / ĐƠN VỊ BAN HÀNH IN HOA",
+  "so_ky_hieu": "Số: ....../(viết tắt loại văn bản theo Phụ lục III NĐ30)-(viết tắt cơ quan), VD: Số: ....../KH-...",
+  "dia_danh_ngay": "Địa danh, ngày ... tháng ... năm ... (ngày <10 và tháng 1, 2 phải có số 0 phía trước)",
+  "ten_loai": "TÊN LOẠI VĂN BẢN IN HOA (VD: KẾ HOẠCH, BÁO CÁO, TỜ TRÌNH, QUYẾT ĐỊNH; để rỗng nếu là cong_van)",
+  "trich_yeu": "Trích yếu nội dung ngắn gọn, rõ ràng",
+  "kinh_gui": ["Danh sách nơi Kính gửi (nếu là Công văn, Tờ trình, Báo cáo; để [] nếu không cần)"],
+  "can_cu": ["Căn cứ ...; (nếu là Quyết định, Kế hoạch; dòng cuối kết thúc bằng dấu chấm; để [] nếu không cần)"],
+  "noi_dung": "Toàn bộ nội dung chi tiết, đầy đủ, chuyên sâu, văn phong hành chính chuẩn mực Việt Nam. Dùng xuống dòng \\n giữa các đoạn, dùng ## cho tiêu đề mục lớn, dùng - cho gạch đầu dòng, có thể dùng bảng Markdown |...| nếu cần. KHÔNG lặp lại Quốc hiệu, Số ký hiệu, Nơi nhận hay Chữ ký trong trường noi_dung này.",
+  "quyen_han_ky": "KT. ... hoặc TM. ... (để rỗng nếu cấp trưởng ký trực tiếp)",
+  "chuc_vu_ky": "CHỨC VỤ NGƯỜI KÝ IN HOA (VD: TRƯỞNG PHÒNG, GIÁM ĐỐC)",
+  "nguoi_ky": "Họ và tên người ký (hoặc để trống)",
+  "noi_nhan": ["- Như trên;", "- ...;", "- Lưu: VT, ..."]
+}
+```
+Chỉ xuất đúng 1 khối JSON chuẩn ở trên, không thêm lời giải thích thừa bên ngoài.
+"""
+
+
+def record_deliverable(worker_idx: int, task_text: str, base_name: str, raw_output: str, mode_label: str) -> dict:
     w = SPECIALISTS[worker_idx]
-    rid = filename.rsplit(".", 1)[0]
-    preview = " ".join(content.replace("#", "").replace("*", "").split())[:150]
+    doc_data = normalize_doc_data(raw_output, fallback_title=task_text)
+    md_content = doc_data_to_markdown(doc_data)
+
+    md_filename = f"{base_name}.md"
+    docx_filename = f"{base_name}.docx"
+    json_filename = f"{base_name}.json"
+
+    (RESULTS_DIR / md_filename).write_text(md_content, encoding="utf-8")
+    save_json(RESULTS_DIR / json_filename, doc_data)
+    build_docx(doc_data, RESULTS_DIR / docx_filename)
+
+    preview = " ".join(doc_data["noi_dung"].replace("#", "").replace("*", "").split())[:150]
     rec = {
-        "id": rid,
+        "id": base_name,
         "workerIndex": worker_idx,
         "workerId": w["id"],
         "workerName": w["name"],
         "workerRole": w["role"],
         "modeLabel": mode_label,
         "task": task_text,
-        "filename": filename,
+        "filename": md_filename,
+        "docxFilename": docx_filename,
+        "jsonFilename": json_filename,
         "completedAt": datetime.now().strftime("%H:%M:%S %d/%m/%Y"),
         "preview": preview,
     }
@@ -360,26 +400,27 @@ def record_deliverable(worker_idx: int, task_text: str, filename: str, content: 
 def run_single_job(worker_idx: int, task_text: str, mode_label: str):
     spec = SPECIALISTS[worker_idx]
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"{ts}_b{worker_idx + 1}_{slugify(task_text)}.md"
-    target = RESULTS_DIR / filename
+    base_name = f"{ts}_b{worker_idx + 1}_{slugify(task_text)}"
+    target = RESULTS_DIR / f".raw_{base_name}.txt"
 
     prompt = (
         f"Bạn là **{spec['name']}** — {spec['role']} ({spec['id']}) tại Phòng Biên Tập Văn Bản.\n"
-        f"Chuyên môn của bạn: {spec['specialty']}\n\n"
+        f"Chuyên môn: {spec['specialty']}\n\n"
         f"Nhiệm vụ người dùng giao:\n> {task_text}\n\n"
-        f"Hãy soạn thảo văn bản hoàn chỉnh, trình bày Markdown đẹp, rõ ràng, sẵn sàng đưa vào Microsoft Word sử dụng ngay (tiếng Việt chuẩn mực, trừ khi yêu cầu ngôn ngữ khác)."
+        f"Hãy soạn thảo văn bản hành chính thật sâu sắc, đầy đủ, chuẩn xác về nội dung và tuân thủ tuyệt đối thể thức Nghị định 30/2020/NĐ-CP.\n"
+        f"{ND30_JSON_SCHEMA_HINT}"
     )
     try:
-        content = run_ai(f"[{spec['id']} - {spec['name']}] {task_text}", prompt, target)
-        rec = record_deliverable(worker_idx, task_text, filename, content, mode_label)
+        raw_out = run_ai(f"[{spec['id']} - {spec['name']}] {task_text}", prompt, target)
+        rec = record_deliverable(worker_idx, task_text, base_name, raw_out, mode_label)
         with STATE_LOCK:
             w = WORKER_STATES[worker_idx]
             w["status"] = "done"
             w["lastResultId"] = rec["id"]
-            w["phaseLabel"] = "Hoàn thành"
+            w["phaseLabel"] = "Hoàn thành chuẩn NĐ30"
             PIPELINE_STATE["active"] = False
             PIPELINE_STATE["phase"] = "done"
-            PIPELINE_STATE["message"] = f"{spec['name']} đã hoàn thành văn bản!"
+            PIPELINE_STATE["message"] = f"{spec['name']} đã hoàn thành văn bản chuẩn NĐ30!"
     except Exception as exc:
         with STATE_LOCK:
             w = WORKER_STATES[worker_idx]
@@ -388,6 +429,12 @@ def run_single_job(worker_idx: int, task_text: str, mode_label: str):
             PIPELINE_STATE["active"] = False
             PIPELINE_STATE["phase"] = "idle"
             PIPELINE_STATE["message"] = f"Lỗi: {exc}"
+    finally:
+        try:
+            if target.exists():
+                target.unlink()
+        except Exception:
+            pass
 
 
 def run_split_merge_job(task_text: str):
@@ -487,32 +534,33 @@ def run_split_merge_job(task_text: str):
         vy["startedAt"] = time.time()
         vy["error"] = None
 
-    final_filename = f"{ts}_tonghop_{slugify(task_text)}.md"
-    final_path = RESULTS_DIR / final_filename
+    base_name = f"{ts}_tonghop_{slugify(task_text)}"
+    raw_final_path = RESULTS_DIR / f".raw_{base_name}.txt"
 
     merge_prompt = (
         f"Bạn là **Vy** — Chuyên viên Tổng hợp & Xuất bản (BÀN 4).\n"
         f"Người dùng đã giao nhiệm vụ lớn:\n> {task_text}\n\n"
-        f"3 đồng nghiệp đã hoàn thành các phần bổ trợ dưới đây. Hãy tổng hợp, biên tập lại thành **MỘT VĂN BẢN HOÀN CHỈNH DUY NHẤT**, "
-        f"mạch lạc, không trùng lặp, trình bày Markdown chuẩn đẹp (có tiêu đề, tóm tắt điều hành, nội dung chi tiết, bảng/checklist hành động nếu phù hợp) để người dùng xuất thẳng sang Word sử dụng ngay:\n\n"
+        f"3 đồng nghiệp đã hoàn thành các phần bổ trợ dưới đây. Hãy tổng hợp, biên tập lại thành **MỘT VĂN BẢN HÀNH CHÍNH HOÀN CHỈNH DUY NHẤT**, "
+        f"mạch lạc, sâu sắc, không trùng lặp, tuân thủ tuyệt đối thể thức Nghị định 30/2020/NĐ-CP:\n\n"
         f"--- PHẦN 1 (Minh - Nghiên cứu & Dàn ý) ---\n{part_outputs.get(0, '(Không có)')}\n\n"
         f"--- PHẦN 2 (Lan - Nội dung chính) ---\n{part_outputs.get(1, '(Không có)')}\n\n"
-        f"--- PHẦN 3 (Tuấn - Thể thức & Lưu ý rủi ro) ---\n{part_outputs.get(2, '(Không có)')}\n"
+        f"--- PHẦN 3 (Tuấn - Thể thức & Lưu ý rủi ro) ---\n{part_outputs.get(2, '(Không có)')}\n\n"
+        f"{ND30_JSON_SCHEMA_HINT}"
     )
 
     try:
-        final_content = run_ai(f"[Tổng hợp - Vy] {task_text}", merge_prompt, final_path)
-        rec = record_deliverable(3, task_text, final_filename, final_content, "Chia 4 bàn & Tổng hợp")
+        final_raw = run_ai(f"[Tổng hợp - Vy] {task_text}", merge_prompt, raw_final_path)
+        rec = record_deliverable(3, task_text, base_name, final_raw, "Chia 4 bàn & Tổng hợp")
         with STATE_LOCK:
             vy = WORKER_STATES[3]
             vy["status"] = "done"
             vy["lastResultId"] = rec["id"]
-            vy["phaseLabel"] = "Đã xuất bản"
+            vy["phaseLabel"] = "Đã xuất bản chuẩn NĐ30"
             PIPELINE_STATE.update(
                 {
                     "active": False,
                     "phase": "done",
-                    "message": "Hoàn tất! Vy đã tổng hợp xong văn bản hoàn chỉnh.",
+                    "message": "Hoàn tất! Vy đã tổng hợp xong văn bản chuẩn Nghị định 30.",
                 }
             )
     except Exception as exc:
@@ -520,6 +568,12 @@ def run_split_merge_job(task_text: str):
             WORKER_STATES[3]["status"] = "error"
             WORKER_STATES[3]["error"] = str(exc)
             PIPELINE_STATE.update({"active": False, "phase": "idle", "message": f"Lỗi tổng hợp: {exc}"})
+    finally:
+        try:
+            if raw_final_path.exists():
+                raw_final_path.unlink()
+        except Exception:
+            pass
 
 
 # ============================================================
@@ -579,7 +633,8 @@ class StudioHandler(SimpleHTTPRequestHandler):
         if self.path == "/api/config":
             safe_cfg = {
                 "provider": CONFIG.get("provider", "auto"),
-                "geminiModel": CONFIG.get("geminiModel", "gemini-2.5-flash"),
+                "antigravityModel": CONFIG.get("antigravityModel", "pro"),
+                "geminiModel": CONFIG.get("geminiModel", "gemini-2.5-pro"),
                 "hasGeminiKey": bool((CONFIG.get("geminiApiKey") or "").strip()),
                 "openaiBaseUrl": CONFIG.get("openaiBaseUrl", "http://localhost:11434/v1"),
                 "openaiModel": CONFIG.get("openaiModel", "qwen2.5:7b"),
@@ -592,15 +647,56 @@ class StudioHandler(SimpleHTTPRequestHandler):
             return
 
         if self.path.startswith("/api/result/"):
-            rid = self.path.split("/api/result/", 1)[1].split("?", 1)[0]
+            rest = self.path.split("/api/result/", 1)[1].split("?", 1)[0]
+            parts = rest.split("/")
+            rid = urllib.request.unquote(parts[0])
+            action = parts[1] if len(parts) > 1 else ""
             with STATE_LOCK:
                 rec = next((r for r in RESULTS if r["id"] == rid), None)
             if not rec:
                 self.send_json({"error": "Không tìm thấy văn bản"}, 404)
                 return
-            p = RESULTS_DIR / rec["filename"]
-            content = p.read_text(encoding="utf-8", errors="replace") if p.exists() else ""
-            self.send_json({**rec, "content": content})
+
+            # Đọc dữ liệu chuẩn NĐ30 (hoặc tự tạo nếu là kết quả cũ)
+            json_p = RESULTS_DIR / rec.get("jsonFilename", f"{rid}.json")
+            md_p = RESULTS_DIR / rec["filename"]
+            docx_name = rec.get("docxFilename") or f"{rid}.docx"
+            docx_p = RESULTS_DIR / docx_name
+
+            if json_p.exists():
+                doc_data = load_json(json_p, None)
+            else:
+                raw_md = md_p.read_text(encoding="utf-8", errors="replace") if md_p.exists() else ""
+                doc_data = normalize_doc_data(raw_md, fallback_title=rec.get("task", "Văn bản"))
+
+            if action == "docx":
+                if not docx_p.exists():
+                    build_docx(doc_data, docx_p)
+                raw_bytes = docx_p.read_bytes()
+                self.send_response(200)
+                self.send_header(
+                    "Content-Type",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                )
+                self.send_header(
+                    "Content-Disposition", f'attachment; filename="{docx_name}"'
+                )
+                self.send_header("Content-Length", str(len(raw_bytes)))
+                self.end_headers()
+                self.wfile.write(raw_bytes)
+                return
+
+            if action == "print":
+                html_str = render_nd30_print_html(doc_data).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(html_str)))
+                self.end_headers()
+                self.wfile.write(html_str)
+                return
+
+            content = md_p.read_text(encoding="utf-8", errors="replace") if md_p.exists() else doc_data_to_markdown(doc_data)
+            self.send_json({**rec, "content": content, "docxFilename": docx_name})
             return
 
         super().do_GET()
@@ -617,6 +713,8 @@ class StudioHandler(SimpleHTTPRequestHandler):
         if self.path == "/api/config":
             if "provider" in body:
                 CONFIG["provider"] = body["provider"]
+            if body.get("antigravityModel"):
+                CONFIG["antigravityModel"] = body["antigravityModel"].strip()
             if body.get("geminiApiKey"):
                 CONFIG["geminiApiKey"] = body["geminiApiKey"].strip()
             if body.get("geminiModel"):
