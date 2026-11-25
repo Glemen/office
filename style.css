@@ -706,6 +706,69 @@ html, body {
 .settings-dialog[open] { display: flex; flex-direction: column; }
 #settings-form { display: flex; flex-direction: column; max-height: calc(100vh - 56px); }
 
+.folder-dialog { width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 56px); }
+.folder-dialog[open] { display: flex; flex-direction: column; }
+
+.fb-body {
+  padding: 14px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+  flex: 1;
+}
+
+.fb-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  user-select: none;
+}
+
+.fb-nav-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.fb-path-input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: #ffffff;
+  color: var(--text);
+  font-family: ui-monospace, monospace;
+  font-size: 12.5px;
+}
+
+.fb-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #ffffff;
+  height: 250px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.fb-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.fb-item:hover { background: #faf6f0; color: var(--accent); }
+
 .modal-head {
   display: flex;
   justify-content: space-between;

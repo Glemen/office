@@ -10,11 +10,13 @@ import base64
 import json
 import os
 import re
-import subprocess
+import socket
+import string
 import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import webbrowser
 from datetime import datetime
@@ -137,22 +139,36 @@ CONFIG = {**DEFAULT_CONFIG, **load_json(CONFIG_FILE, {})}
 CONFIG["orgProfile"] = {**DEFAULT_CONFIG["orgProfile"], **(CONFIG.get("orgProfile") or {})}
 
 
+def _is_local_ollama_up(base_url: str) -> bool:
+    try:
+        parsed = urllib.parse.urlparse(base_url)
+        host = parsed.hostname or "127.0.0.1"
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        with socket.create_connection((host, port), timeout=0.25):
+            return True
+    except OSError:
+        return False
+
+
 def active_provider() -> str:
     pref = CONFIG.get("provider", "auto")
     has_agy = bool(LS_ADDRESS and CSRF_TOKEN)
     has_gemini = bool((CONFIG.get("geminiApiKey") or "").strip())
-    has_openai = bool((CONFIG.get("openaiBaseUrl") or "").strip())
+    base_url = (CONFIG.get("openaiBaseUrl") or "").strip()
+    has_openai_key = bool((CONFIG.get("openaiApiKey") or "").strip())
+
     if pref == "antigravity" and has_agy:
         return "antigravity"
     if pref == "gemini" and has_gemini:
         return "gemini"
-    if pref == "openai" and has_openai:
+    if pref == "openai" and base_url:
         return "openai"
+
     if has_agy:
         return "antigravity"
     if has_gemini:
         return "gemini"
-    if has_openai and (CONFIG.get("openaiApiKey") or "localhost" in CONFIG.get("openaiBaseUrl", "")):
+    if base_url and (has_openai_key or _is_local_ollama_up(base_url)):
         return "openai"
     return "none"
 
@@ -193,25 +209,52 @@ def pick_best_specialist(task_text: str, has_images: bool = False, has_workspace
 # ============================================================
 # HỖ TRỢ THƯ MỤC LÀM VIỆC (WORKSPACE FOLDER) & ẢNH ĐÍNH KÈM
 # ============================================================
-def pick_windows_folder() -> str:
-    """Mở hộp thoại chọn thư mục gốc của Windows nổi lên trên trình duyệt (0 KB phụ thuộc)."""
-    ps_script = (
-        "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; "
-        "Add-Type -AssemblyName System.Windows.Forms; "
-        "$top = New-Object System.Windows.Forms.Form; $top.TopMost = $true; "
-        "$dlg = New-Object System.Windows.Forms.FolderBrowserDialog; "
-        "$dlg.Description = 'Chọn thư mục làm việc cho Chuyên viên AI (chỉ thao tác trong thư mục này)'; "
-        "$dlg.ShowNewFolderButton = $true; "
-        "if ($dlg.ShowDialog($top) -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $dlg.SelectedPath }"
-    )
-    res = subprocess.run(
-        ["powershell", "-NoProfile", "-STA", "-Command", ps_script],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        timeout=120,
-    )
-    return (res.stdout or "").strip()
+def list_system_roots() -> dict:
+    """Lấy danh sách ổ đĩa và thư mục nhanh (Desktop, Documents, Downloads) tức thì, không bao giờ treo."""
+    home = Path.home()
+    shortcuts = []
+    for label, sub in (("Desktop", "Desktop"), ("OneDrive Desktop", "OneDrive/Desktop"), ("Documents", "Documents"), ("Downloads", "Downloads")):
+        cand = home / sub
+        if cand.is_dir():
+            shortcuts.append({"label": label, "path": str(cand.resolve())})
+    drives = []
+    if os.name == "nt":
+        for d in string.ascii_uppercase:
+            dp = f"{d}:\\"
+            if os.path.exists(dp):
+                drives.append(dp)
+    else:
+        drives.append("/")
+    return {"shortcuts": shortcuts, "drives": drives, "home": str(home.resolve())}
+
+
+def browse_directory(dir_path: str) -> dict:
+    """Duyệt danh sách thư mục con bên trong đường dẫn truyền vào."""
+    p = Path(dir_path).expanduser().resolve()
+    if not p.is_dir():
+        raise ValueError(f"Thư mục không tồn tại: {dir_path}")
+    parent = str(p.parent) if p.parent != p else ""
+    subdirs = []
+    file_count = 0
+    try:
+        for entry in sorted(p.iterdir(), key=lambda x: x.name.lower()):
+            if entry.name.startswith("."):
+                continue
+            try:
+                if entry.is_dir():
+                    subdirs.append({"name": entry.name, "path": str(entry)})
+                else:
+                    file_count += 1
+            except OSError:
+                continue
+    except PermissionError:
+        pass
+    return {
+        "current": str(p),
+        "parent": parent,
+        "subdirs": subdirs[:200],
+        "fileCount": file_count,
+    }
 
 
 def summarize_workspace_dir(ws_dir: str, include_file_snippets: bool = False) -> str:
@@ -817,12 +860,15 @@ class StudioHandler(SimpleHTTPRequestHandler):
 
     def send_json(self, data, status=200):
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+            pass
 
     def _load_doc_data(self, rec: dict) -> dict:
         rid = rec["id"]
@@ -848,6 +894,20 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 self.wfile.write(data)
                 return
             self.send_json({"error": "File not found"}, 404)
+            return
+
+        if self.path.startswith("/api/browse-dir"):
+            parsed = urllib.parse.urlparse(self.path)
+            qs = urllib.parse.parse_qs(parsed.query)
+            req_path = (qs.get("path", [""])[0] or "").strip()
+            roots = list_system_roots()
+            if not req_path:
+                req_path = roots["shortcuts"][0]["path"] if roots["shortcuts"] else roots["home"]
+            try:
+                listing = browse_directory(req_path)
+                self.send_json({"ok": True, **roots, **listing})
+            except Exception as exc:
+                self.send_json({"error": str(exc), **roots}, 400)
             return
 
         if self.path == "/api/state":
@@ -945,17 +1005,18 @@ class StudioHandler(SimpleHTTPRequestHandler):
             self.send_json({"error": "JSON không hợp lệ"}, 400)
             return
 
-        if self.path == "/api/pick-folder":
+        if self.path == "/api/create-folder":
+            parent = (body.get("parent") or "").strip()
+            name = re.sub(r'[<>:"/\\|?*]+', "_", (body.get("name") or "").strip())
+            if not parent or not name:
+                self.send_json({"error": "Thiếu tên thư mục"}, 400)
+                return
             try:
-                selected = pick_windows_folder()
-                if not selected:
-                    self.send_json({"ok": False, "cancelled": True})
-                    return
-                p = Path(selected)
-                file_count = sum(1 for _ in p.iterdir()) if p.is_dir() else 0
-                self.send_json({"ok": True, "path": str(p), "itemCount": file_count})
+                new_dir = (Path(parent).resolve() / name)
+                new_dir.mkdir(parents=False, exist_ok=True)
+                self.send_json({"ok": True, "path": str(new_dir)})
             except Exception as exc:
-                self.send_json({"error": f"Không mở được hộp chọn thư mục: {exc}"}, 500)
+                self.send_json({"error": f"Không tạo được thư mục: {exc}"}, 400)
             return
 
         if self.path == "/api/open-folder":

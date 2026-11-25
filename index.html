@@ -418,6 +418,39 @@
     </form>
   </dialog>
 
+  <!-- Native Modal Dialog: Instant In-Browser Folder Explorer -->
+  <dialog id="folder-dialog" class="modal-dialog folder-dialog" closedby="any" aria-labelledby="fb-title">
+    <div class="modal-head">
+      <div>
+        <span class="desk-tag">CHẾ ĐỘ THƯ MỤC LÀM VIỆC</span>
+        <h2 id="fb-title">Chọn thư mục cho Tác nhân AI</h2>
+        <p class="role-text">Chuyên viên chỉ đọc, tạo/sửa file và lưu kết quả bên trong thư mục được chọn.</p>
+      </div>
+      <button type="button" class="icon-btn" id="btn-fb-close" aria-label="Đóng chọn thư mục">✕</button>
+    </div>
+
+    <div class="fb-body">
+      <div class="fb-shortcuts" id="fb-shortcuts" aria-label="Lối tắt nhanh"></div>
+
+      <div class="fb-nav-row">
+        <button type="button" class="btn-outline" id="btn-fb-up" title="Lên thư mục cha">↑ Lên</button>
+        <input id="fb-path-input" type="text" class="fb-path-input" placeholder="Nhập hoặc dán đường dẫn thư mục..." />
+        <button type="button" class="btn-outline" id="btn-fb-go">Mở</button>
+        <button type="button" class="btn-outline" id="btn-fb-new">+ Tạo mới</button>
+      </div>
+
+      <ul class="fb-list" id="fb-list" aria-label="Danh sách thư mục con"></ul>
+    </div>
+
+    <div class="modal-foot">
+      <span class="role-text" id="fb-info">0 tệp tin trong thư mục này</span>
+      <div class="modal-foot-btns">
+        <button type="button" class="btn-outline" id="btn-fb-cancel">Hủy</button>
+        <button type="button" class="btn-primary" id="btn-fb-select">Chọn thư mục này</button>
+      </div>
+    </div>
+  </dialog>
+
   <script type="module" src="./office.js"></script>
 </body>
 </html>

@@ -372,6 +372,14 @@ const btnResPdf = document.getElementById('btn-res-pdf');
 const elSetDialog = document.getElementById('settings-dialog');
 const elSetForm = document.getElementById('settings-form');
 
+const elFolderDialog = document.getElementById('folder-dialog');
+const elFbShortcuts = document.getElementById('fb-shortcuts');
+const elFbPathInput = document.getElementById('fb-path-input');
+const elFbList = document.getElementById('fb-list');
+const elFbInfo = document.getElementById('fb-info');
+let fbCurrentPath = '';
+let fbParentPath = '';
+
 WORKERS.forEach((w, i) => {
   const opt = document.createElement('option');
   opt.value = String(i);
@@ -502,30 +510,111 @@ elCommandDock.addEventListener('drop', async (e) => {
   if (docs.length > 0) await attachDocFile(docs[0]);
 });
 
-// 2. Chọn Thư mục làm việc (Workspace Folder Mode ngang Antigravity)
-btnPickFolder.addEventListener('click', async () => {
-  btnPickFolder.disabled = true;
-  btnPickFolder.textContent = 'Đang mở...';
+// 2. Chọn Thư mục làm việc (Hộp chọn thư mục tức thì ngay trên trình duyệt — không bao giờ treo!)
+async function loadFolderBrowser(targetPath = '') {
   try {
-    const resp = await fetch('/api/pick-folder', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: '{}',
-    });
+    const qs = targetPath ? `?path=${encodeURIComponent(targetPath)}` : '';
+    const resp = await fetch(`/api/browse-dir${qs}`);
     const data = await resp.json();
-    if (data.ok && data.path) {
-      activeWorkspaceDir = data.path;
-      localStorage.setItem('studio_workspace_dir', activeWorkspaceDir);
-      refreshContextStrip();
-      showToast(`Đã chọn thư mục làm việc: ${data.path} (${data.itemCount} mục)`);
-      elCmdInput.focus();
+    if (!resp.ok) {
+      showToast(data.error || 'Không mở được thư mục này');
+      return;
+    }
+    fbCurrentPath = data.current || '';
+    fbParentPath = data.parent || '';
+    elFbPathInput.value = fbCurrentPath;
+    elFbInfo.textContent = `Đang xem: ${fbCurrentPath} (${data.subdirs.length} thư mục con, ${data.fileCount} tệp tin)`;
+
+    // Render lối tắt ổ đĩa + Desktop/Documents/Downloads
+    elFbShortcuts.innerHTML = '';
+    (data.shortcuts || []).forEach((sc) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'tpl-chip';
+      b.textContent = sc.label;
+      b.addEventListener('click', () => loadFolderBrowser(sc.path));
+      elFbShortcuts.appendChild(b);
+    });
+    (data.drives || []).forEach((drv) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'tpl-chip';
+      b.textContent = `Ổ ${drv}`;
+      b.addEventListener('click', () => loadFolderBrowser(drv));
+      elFbShortcuts.appendChild(b);
+    });
+
+    // Render danh sách thư mục con
+    elFbList.innerHTML = '';
+    if ((data.subdirs || []).length === 0) {
+      elFbList.innerHTML = '<li class="empty-state" style="padding:10px;">(Không có thư mục con — bấm "Chọn thư mục này" để dùng thư mục hiện tại)</li>';
+    } else {
+      data.subdirs.forEach((sd) => {
+        const li = document.createElement('li');
+        li.className = 'fb-item';
+        li.textContent = `📁 ${sd.name}`;
+        li.addEventListener('click', () => loadFolderBrowser(sd.path));
+        elFbList.appendChild(li);
+      });
     }
   } catch (err) {
-    showToast(`Lỗi chọn thư mục: ${err.message}`);
-  } finally {
-    btnPickFolder.disabled = false;
-    btnPickFolder.textContent = 'Thư mục';
+    showToast(`Lỗi duyệt thư mục: ${err.message}`);
   }
+}
+
+btnPickFolder.addEventListener('click', async () => {
+  await loadFolderBrowser(activeWorkspaceDir || '');
+  elFolderDialog.showModal();
+});
+
+document.getElementById('btn-fb-close').addEventListener('click', () => elFolderDialog.close());
+document.getElementById('btn-fb-cancel').addEventListener('click', () => elFolderDialog.close());
+document.getElementById('btn-fb-up').addEventListener('click', () => {
+  if (fbParentPath) loadFolderBrowser(fbParentPath);
+});
+document.getElementById('btn-fb-go').addEventListener('click', () => {
+  if (elFbPathInput.value.trim()) loadFolderBrowser(elFbPathInput.value.trim());
+});
+elFbPathInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    if (elFbPathInput.value.trim()) loadFolderBrowser(elFbPathInput.value.trim());
+  }
+});
+document.getElementById('btn-fb-new').addEventListener('click', async () => {
+  const folderName = window.prompt('Nhập tên thư mục mới cần tạo:', 'HoSoMoi');
+  if (!folderName || !fbCurrentPath) return;
+  const resp = await fetch('/api/create-folder', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ parent: fbCurrentPath, name: folderName }),
+  });
+  const data = await resp.json();
+  if (resp.ok && data.path) {
+    await loadFolderBrowser(data.path);
+  } else {
+    showToast(data.error || 'Không tạo được thư mục');
+  }
+});
+document.getElementById('btn-fb-select').addEventListener('click', async () => {
+  const candidate = elFbPathInput.value.trim() || fbCurrentPath;
+  if (!candidate) return;
+  const resp = await fetch('/api/validate-folder', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path: candidate }),
+  });
+  const data = await resp.json();
+  if (!resp.ok) {
+    showToast(data.error || 'Thư mục không hợp lệ');
+    return;
+  }
+  activeWorkspaceDir = data.path;
+  localStorage.setItem('studio_workspace_dir', activeWorkspaceDir);
+  refreshContextStrip();
+  elFolderDialog.close();
+  showToast(`Đã kết nối thư mục làm việc: ${data.path}`);
+  elCmdInput.focus();
 });
 
 async function openFolderInExplorer(pathStr) {
@@ -621,6 +710,7 @@ function bindDialogLightDismissFallback(dialog) {
 }
 bindDialogLightDismissFallback(elResDialog);
 bindDialogLightDismissFallback(elSetDialog);
+bindDialogLightDismissFallback(elFolderDialog);
 
 function renderMarkdownSafe(md) {
   const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
