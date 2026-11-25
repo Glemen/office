@@ -1,19 +1,17 @@
 import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/OrbitControls.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 // ============================================================
-// 4 CHUYÊN VIÊN VĂN BẢN QUANH BÀN BIÊN TẬP GỖ ÓC CHÓ
+// 4 CHUYÊN VIÊN CHIBI (TẢI TRỰC TIẾP TỪ BLENDER assets/studio.glb)
 // ============================================================
 const WORKERS = [
   {
     id: 'BÀN 1',
     name: 'Minh',
     role: 'Nghiên cứu & Lập dàn ý',
-    shirt: 0x1e3a5f,
-    seatPos: new THREE.Vector3(-1.15, 0, -1.42),
-    facingY: 0,
-    laptopPos: new THREE.Vector3(-1.15, 0.79, -0.58),
-    laptopRotY: Math.PI,
+    focusPos: new THREE.Vector3(-1.05, 0.95, -1.0),
+    orbAnchor: new THREE.Vector3(-1.05, 1.02, -0.42),
     status: 'idle',
     task: null,
     phaseLabel: null,
@@ -25,11 +23,8 @@ const WORKERS = [
     id: 'BÀN 2',
     name: 'Lan',
     role: 'Chấp bút & Soạn thảo chính',
-    shirt: 0x8c2d3b,
-    seatPos: new THREE.Vector3(1.15, 0, -1.42),
-    facingY: 0,
-    laptopPos: new THREE.Vector3(1.15, 0.79, -0.58),
-    laptopRotY: Math.PI,
+    focusPos: new THREE.Vector3(1.05, 0.95, -1.0),
+    orbAnchor: new THREE.Vector3(1.05, 1.02, -0.42),
     status: 'idle',
     task: null,
     phaseLabel: null,
@@ -41,11 +36,8 @@ const WORKERS = [
     id: 'BÀN 3',
     name: 'Tuấn',
     role: 'Biên tập & Chuẩn thể thức',
-    shirt: 0x3f4752,
-    seatPos: new THREE.Vector3(-1.15, 0, 1.42),
-    facingY: Math.PI,
-    laptopPos: new THREE.Vector3(-1.15, 0.79, 0.58),
-    laptopRotY: 0,
+    focusPos: new THREE.Vector3(-1.05, 0.95, 1.0),
+    orbAnchor: new THREE.Vector3(-1.05, 1.02, 0.42),
     status: 'idle',
     task: null,
     phaseLabel: null,
@@ -57,11 +49,8 @@ const WORKERS = [
     id: 'BÀN 4',
     name: 'Vy',
     role: 'Tổng hợp & Xuất bản',
-    shirt: 0x155e63,
-    seatPos: new THREE.Vector3(1.15, 0, 1.42),
-    facingY: Math.PI,
-    laptopPos: new THREE.Vector3(1.15, 0.79, 0.58),
-    laptopRotY: 0,
+    focusPos: new THREE.Vector3(1.05, 0.95, 1.0),
+    orbAnchor: new THREE.Vector3(1.05, 1.02, 0.42),
     status: 'idle',
     task: null,
     phaseLabel: null,
@@ -73,17 +62,17 @@ const WORKERS = [
 
 const STATUS_META = {
   idle: { label: 'Đang chờ việc', color: 0xa8998a, css: '#8c7866' },
-  working: { label: 'Đang biên soạn', color: 0x9a5b25, css: '#9a5b25' },
+  working: { label: 'Đang biên soạn', color: 0x2563eb, css: '#2563eb' },
   done: { label: 'Đã có văn bản', color: 0x15803d, css: '#15803d' },
   error: { label: 'Có lỗi', color: 0xb91c1c, css: '#b91c1c' },
 };
 
 // ============================================================
-// THREE.JS — PHÒNG BIÊN TẬP GỖ ẤM SANG TRỌNG (EDITORIAL STUDIO)
+// THREE.JS RENDERER, CAMERA & ÁNH SÁNG STUDIO ẤM
 // ============================================================
 const container = document.getElementById('canvas-wrap');
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xeae3d7);
+scene.background = new THREE.Color(0xefe8dc);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -91,499 +80,200 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.06;
+renderer.toneMappingExposure = 1.08;
 container.appendChild(renderer.domElement);
 
-const camera = new THREE.PerspectiveCamera(36, window.innerWidth / window.innerHeight, 0.1, 100);
-const DEFAULT_CAM_POS = new THREE.Vector3(6.8, 5.8, 7.8);
-const DEFAULT_TARGET = new THREE.Vector3(0, 0.85, 0);
+const camera = new THREE.PerspectiveCamera(34, window.innerWidth / window.innerHeight, 0.1, 100);
+const DEFAULT_CAM_POS = new THREE.Vector3(-0.3, 4.9, 6.9);
+const DEFAULT_TARGET = new THREE.Vector3(0, 1.05, -0.35);
 camera.position.copy(DEFAULT_CAM_POS);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.copy(DEFAULT_TARGET);
 controls.enableDamping = true;
 controls.dampingFactor = 0.06;
-controls.maxPolarAngle = Math.PI / 2 - 0.06;
-controls.minDistance = 4.5;
-controls.maxDistance = 18;
+controls.maxPolarAngle = Math.PI / 2 - 0.05;
+controls.minDistance = 3.5;
+controls.maxDistance = 16;
 controls.update();
 
-// Ánh sáng ấm kiểu phòng biên tập ban ngày + đèn thả trần
-scene.add(new THREE.HemisphereLight(0xfffaf0, 0xd4c3ae, 0.95));
+// Ánh sáng tự nhiên ban ngày + đèn thả trần ấm giống ảnh Chibi
+scene.add(new THREE.HemisphereLight(0xfffaf2, 0xd8c8b4, 1.15));
 
-const sunLight = new THREE.DirectionalLight(0xfff2dc, 1.55);
-sunLight.position.set(7.5, 9.5, -3.5);
+const sunLight = new THREE.DirectionalLight(0xfff5e4, 1.75);
+sunLight.position.set(5.5, 8.5, 4.5);
 sunLight.castShadow = true;
 sunLight.shadow.mapSize.set(2048, 2048);
 sunLight.shadow.camera.near = 1;
-sunLight.shadow.camera.far = 28;
-sunLight.shadow.camera.left = -7.5;
-sunLight.shadow.camera.right = 7.5;
-sunLight.shadow.camera.top = 7.5;
-sunLight.shadow.camera.bottom = -7.5;
-sunLight.shadow.bias = -0.0004;
+sunLight.shadow.camera.far = 25;
+sunLight.shadow.camera.left = -6.5;
+sunLight.shadow.camera.right = 6.5;
+sunLight.shadow.camera.top = 6.5;
+sunLight.shadow.camera.bottom = -6.5;
+sunLight.shadow.bias = -0.0005;
 sunLight.shadow.radius = 3;
 scene.add(sunLight);
 
-const pendantLight = new THREE.PointLight(0xffe4b5, 2.2, 8.5, 1.6);
-pendantLight.position.set(0, 2.55, 0);
-scene.add(pendantLight);
+const warmPendantLight = new THREE.PointLight(0xffe1a8, 2.8, 9, 1.5);
+warmPendantLight.position.set(0, 2.35, 0);
+scene.add(warmPendantLight);
+
+const slatGlowLight = new THREE.PointLight(0xffcb77, 1.8, 6, 1.7);
+slatGlowLight.position.set(-1.2, 2.2, -3.5);
+scene.add(slatGlowLight);
 
 // ============================================================
-// TEXTURES & MATERIALS (SÀN GỖ XƯƠNG CÁ, GỖ ÓC CHÓ, ĐỒNG THAU, DA BÒ)
+// TẢI MÔ HÌNH BLENDER (assets/studio.glb) & GẮN KHỚP ANIMATION + MÀN HÌNH SỐNG
 // ============================================================
-function makeParquetTexture() {
-  const c = document.createElement('canvas');
-  c.width = 512;
-  c.height = 512;
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = '#d8be9a';
-  ctx.fillRect(0, 0, 512, 512);
-  const pw = 64;
-  const ph = 256;
-  for (let row = 0; row < 4; row++) {
-    for (let col = 0; col < 8; col++) {
-      const shade = ((row * 3 + col * 5) % 4) * 5 - 8;
-      ctx.fillStyle = `rgb(${214 + shade}, ${184 + shade}, ${145 + shade})`;
-      const x = col * pw;
-      const y = (row * ph) / 2 + (col % 2) * 32;
-      ctx.fillRect(x, y, pw - 2, ph / 2 - 2);
-    }
-  }
-  const tex = new THREE.CanvasTexture(c);
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(4, 4);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
+const workerRigs = [];
+const clickable = [];
+const monitorUpdaters = [];
 
-function makeWalnutTexture() {
-  const c = document.createElement('canvas');
-  c.width = 512;
-  c.height = 512;
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = '#5c3d28';
-  ctx.fillRect(0, 0, 512, 512);
-  for (let y = 0; y < 512; y += 3) {
-    const d = Math.sin(y * 0.06) * 10 + (Math.random() - 0.5) * 8;
-    ctx.fillStyle = `rgba(${78 + d}, ${50 + d * 0.7}, ${32 + d * 0.5}, 0.45)`;
-    ctx.fillRect(0, y, 512, 2);
-  }
-  const tex = new THREE.CanvasTexture(c);
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
-
-const MAT = {
-  floor: new THREE.MeshStandardMaterial({ map: makeParquetTexture(), roughness: 0.62, metalness: 0.02 }),
-  rug: new THREE.MeshStandardMaterial({ color: 0xf4eee4, roughness: 0.95 }),
-  wall: new THREE.MeshStandardMaterial({ color: 0xf6f2ea, roughness: 0.92 }),
-  walnut: new THREE.MeshStandardMaterial({ map: makeWalnutTexture(), roughness: 0.46, metalness: 0.04 }),
-  brass: new THREE.MeshStandardMaterial({ color: 0xc9a35d, roughness: 0.28, metalness: 0.82 }),
-  leather: new THREE.MeshStandardMaterial({ color: 0x8f5633, roughness: 0.58 }),
-  matteBlack: new THREE.MeshStandardMaterial({ color: 0x221f1c, roughness: 0.55 }),
-  paper: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85 }),
-  folder: new THREE.MeshStandardMaterial({ color: 0xe3c38c, roughness: 0.75 }),
-  silver: new THREE.MeshStandardMaterial({ color: 0xd6d3cd, roughness: 0.28, metalness: 0.65 }),
-  skin: new THREE.MeshStandardMaterial({ color: 0xe5b898, roughness: 0.65 }),
-  hair: new THREE.MeshStandardMaterial({ color: 0x201914, roughness: 0.8 }),
-  pants: new THREE.MeshStandardMaterial({ color: 0x292524, roughness: 0.85 }),
-  leaf: new THREE.MeshStandardMaterial({ color: 0x2e6438, roughness: 0.62 }),
-  pot: new THREE.MeshStandardMaterial({ color: 0xd6cdc0, roughness: 0.78 }),
-  lampGlow: new THREE.MeshStandardMaterial({
-    color: 0xfff3d6,
-    emissive: 0xffd58a,
-    emissiveIntensity: 1.5,
-    roughness: 0.2,
-  }),
-  windowGlass: new THREE.MeshStandardMaterial({
-    color: 0xfff6e5,
-    emissive: 0xffeacc,
-    emissiveIntensity: 0.65,
-    roughness: 0.1,
-  }),
-};
-
-function box(w, h, d, m, x, y, z, parent = scene, cast = true, receive = true) {
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
-  mesh.position.set(x, y, z);
-  mesh.castShadow = cast;
-  mesh.receiveShadow = receive;
-  parent.add(mesh);
-  return mesh;
-}
-
-// ============================================================
-// KIẾN TRÚC PHÒNG BIÊN TẬP
-// ============================================================
-box(13.6, 0.16, 11.2, MAT.floor, 0, -0.08, 0, scene, false, true);
-// Thảm trải sàn màu kem dưới bàn họp
-box(5.6, 0.015, 4.4, MAT.rug, 0, 0.008, 0, scene, false, true);
-
-// Tường sau (-Z) và tường trái (-X) + nẹp gỗ óc chó & đồng thau
-box(13.6, 4.2, 0.2, MAT.wall, 0, 2.1, -5.2, scene, false, true);
-box(0.2, 4.2, 11.2, MAT.wall, -6.2, 2.1, 0, scene, false, true);
-box(13.4, 0.9, 0.06, MAT.walnut, 0, 0.45, -5.08, scene, false, true);
-box(13.4, 0.035, 0.07, MAT.brass, 0, 0.91, -5.07, scene, false, false);
-box(0.06, 0.9, 11.0, MAT.walnut, -6.08, 0.45, 0, scene, false, true);
-box(0.07, 0.035, 11.0, MAT.brass, -6.07, 0.91, 0, scene, false, false);
-
-// Cửa sổ lớn tường sau-phải đón nắng ấm
-const winGroup = new THREE.Group();
-winGroup.position.set(3.2, 2.35, -5.07);
-scene.add(winGroup);
-box(4.4, 2.8, 0.06, MAT.windowGlass, 0, 0, 0, winGroup, false, false);
-box(4.55, 0.09, 0.12, MAT.matteBlack, 0, 1.4, 0.02, winGroup, false, false);
-box(4.55, 0.09, 0.12, MAT.matteBlack, 0, -1.4, 0.02, winGroup, false, false);
-for (const wx of [-2.22, -0.74, 0.74, 2.22]) {
-  box(0.08, 2.8, 0.12, MAT.matteBlack, wx, 0, 0.02, winGroup, false, false);
-}
-
-// Tủ thư viện hồ sơ gỗ óc chó tường sau-trái
-const library = new THREE.Group();
-library.position.set(-3.2, 0, -4.75);
-scene.add(library);
-box(3.4, 2.7, 0.48, MAT.walnut, 0, 1.35, 0, library);
-const binderColors = [0x1e3a5f, 0x8c2d3b, 0x2f5d50, 0x9a5b25, 0x4b5563, 0xd6cdc0];
-for (const sy of [0.95, 1.55, 2.15]) {
-  box(3.22, 0.04, 0.46, MAT.walnut, 0, sy - 0.22, 0.02, library, false, true);
-  for (let b = 0; b < 14; b++) {
-    const bx = -1.42 + b * 0.21;
-    if (b === 6 || b === 11) continue;
-    box(
-      0.085,
-      0.34 + (b % 3) * 0.04,
-      0.26,
-      new THREE.MeshStandardMaterial({ color: binderColors[(b + Math.round(sy * 3)) % binderColors.length], roughness: 0.72 }),
-      bx,
-      sy - 0.02,
-      0.08,
-      library
-    );
-  }
-}
-
-// Bảng Quy Trình Biên Tập Live trên tường trái (CanvasTexture cập nhật trực tiếp!)
-const boardCanvas = document.createElement('canvas');
-boardCanvas.width = 512;
-boardCanvas.height = 300;
-const boardCtx = boardCanvas.getContext('2d');
-const boardTex = new THREE.CanvasTexture(boardCanvas);
-boardTex.colorSpace = THREE.SRGBColorSpace;
-
-const boardGroup = new THREE.Group();
-boardGroup.position.set(-6.05, 2.35, -0.2);
-boardGroup.rotation.y = Math.PI / 2;
-scene.add(boardGroup);
-box(2.75, 1.65, 0.06, MAT.walnut, 0, 0, 0, boardGroup);
-const boardScreen = new THREE.Mesh(
-  new THREE.PlaneGeometry(2.58, 1.48),
-  new THREE.MeshBasicMaterial({ map: boardTex })
-);
-boardScreen.position.z = 0.035;
-boardGroup.add(boardScreen);
-
-let pipelineInfo = { active: false, phase: 'idle', message: 'Sẵn sàng nhận lệnh' };
-
-function redrawEditorialBoard() {
-  const ctx = boardCtx;
-  ctx.fillStyle = '#fffdf9';
-  ctx.fillRect(0, 0, 512, 300);
-  ctx.fillStyle = '#5c3d28';
-  ctx.fillRect(0, 0, 512, 46);
-  ctx.fillStyle = '#fffdf9';
-  ctx.font = 'bold 20px sans-serif';
-  ctx.fillText('BẢNG ĐIỀU PHỐI BIÊN TẬP VĂN BẢN', 20, 30);
-
-  WORKERS.forEach((w, i) => {
-    const y = 74 + i * 44;
-    const meta = STATUS_META[w.status] || STATUS_META.idle;
-    ctx.fillStyle = '#f5efe6';
-    ctx.fillRect(20, y - 22, 472, 34);
-    ctx.fillStyle = meta.css;
-    ctx.beginPath();
-    ctx.arc(38, y - 5, 7, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#1f1914';
-    ctx.font = 'bold 16px sans-serif';
-    ctx.fillText(`${w.name} (${w.role})`, 56, y);
-    ctx.fillStyle = meta.css;
-    ctx.font = '14px sans-serif';
-    const stText = w.status === 'working' ? `${w.phaseLabel || 'Đang làm'} (${w.elapsedSec}s)` : meta.label;
-    ctx.fillText(stText, 315, y);
-  });
-
-  ctx.fillStyle = '#6c5e52';
-  ctx.font = '15px sans-serif';
-  ctx.fillText((pipelineInfo.message || '').slice(0, 54), 22, 276);
-  boardTex.needsUpdate = true;
-}
-
-// Góc máy in & kệ giấy A4 ở phía sau-phải
-const printCorner = new THREE.Group();
-printCorner.position.set(4.5, 0, -3.6);
-scene.add(printCorner);
-box(1.1, 0.78, 0.65, MAT.walnut, 0, 0.39, 0, printCorner);
-box(0.58, 0.36, 0.48, MAT.matteBlack, 0, 0.96, 0, printCorner);
-box(0.28, 0.04, 0.24, MAT.paper, 0, 1.15, 0.06, printCorner); // giấy A4 trên khay
-
-// Cây Bàng Singapore xanh mướt
-function addFiddlePlant(x, z, scale = 1) {
-  const g = new THREE.Group();
-  g.position.set(x, 0, z);
-  scene.add(g);
-  const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.26 * scale, 0.21 * scale, 0.46 * scale, 18), MAT.pot);
-  pot.position.y = 0.23 * scale;
-  pot.castShadow = true;
-  g.add(pot);
-  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.03 * scale, 0.04 * scale, 0.95 * scale, 8), MAT.walnut);
-  stem.position.y = 0.7 * scale;
-  g.add(stem);
-  for (let i = 0; i < 9; i++) {
-    const a = (i / 9) * Math.PI * 2;
-    const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.18 * scale, 12, 10), MAT.leaf);
-    leaf.scale.set(0.8, 1.4, 0.35);
-    leaf.position.set(Math.cos(a) * 0.22 * scale, (0.95 + (i % 3) * 0.22) * scale, Math.sin(a) * 0.22 * scale);
-    leaf.rotation.z = -Math.cos(a) * 0.5;
-    leaf.rotation.x = Math.sin(a) * 0.5;
-    leaf.castShadow = true;
-    g.add(leaf);
-  }
-}
-addFiddlePlant(-5.2, -4.2, 1.1);
-addFiddlePlant(-5.2, 3.3, 0.95);
-
-// ============================================================
-// BÀN BIÊN TẬP GỖ ÓC CHÓ TRUNG TÂM + ĐÈN THẢ ĐỒNG THAU
-// ============================================================
-const tableGroup = new THREE.Group();
-scene.add(tableGroup);
-box(4.2, 0.07, 1.75, MAT.walnut, 0, 0.74, 0, tableGroup);
-// Viền đồng thau tinh tế chạy quanh cạnh bàn
-box(4.22, 0.015, 1.77, MAT.brass, 0, 0.71, 0, tableGroup, false, false);
-// 2 chân bàn chữ U màu đen mờ
-for (const lx of [-1.55, 1.55]) {
-  box(0.08, 0.71, 1.32, MAT.matteBlack, lx, 0.355, 0, tableGroup);
-}
-
-// Đèn thả trần đồng thau thanh mảnh
-const lampGroup = new THREE.Group();
-lampGroup.position.set(0, 2.75, 0);
-scene.add(lampGroup);
-box(2.6, 0.06, 0.14, MAT.brass, 0, 0, 0, lampGroup, false, false);
-box(2.5, 0.02, 0.10, MAT.lampGlow, 0, -0.035, 0, lampGroup, false, false);
-for (const cx of [-0.95, 0.95]) {
-  box(0.015, 1.4, 0.015, MAT.matteBlack, cx, 0.72, 0, lampGroup, false, false);
-}
-
-// Tài liệu, tập hồ sơ & lọ hoa nhỏ trên mặt bàn
-box(0.24, 0.03, 0.32, MAT.paper, -0.15, 0.79, -0.1, tableGroup);
-box(0.26, 0.025, 0.34, MAT.folder, 0.18, 0.79, 0.12, tableGroup);
-const vase = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 0.18, 16), MAT.pot);
-vase.position.set(0, 0.86, 0);
-tableGroup.add(vase);
-const centerpiece = new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 10), MAT.leaf);
-centerpiece.position.set(0, 1.0, 0);
-tableGroup.add(centerpiece);
-
-// ============================================================
-// GHẾ DA BÒ + LAPTOP + 4 CHUYÊN VIÊN + HIỆU ỨNG TRUYỀN DỮ LIỆU KHI TỔNG HỢP
-// ============================================================
-function createStudioChair(pos, rotY) {
-  const g = new THREE.Group();
-  g.position.copy(pos);
-  g.rotation.y = rotY;
-  scene.add(g);
-  for (const [lx, lz] of [[-0.22, -0.22], [0.22, -0.22], [-0.22, 0.22], [0.22, 0.22]]) {
-    box(0.04, 0.44, 0.04, MAT.walnut, lx, 0.22, lz, g);
-  }
-  box(0.50, 0.08, 0.48, MAT.leather, 0, 0.46, 0, g);
-  box(0.48, 0.50, 0.07, MAT.leather, 0, 0.74, -0.22, g);
-  for (const ax of [-0.24, 0.24]) {
-    box(0.04, 0.18, 0.04, MAT.walnut, ax, 0.56, -0.02, g);
-    box(0.05, 0.035, 0.30, MAT.walnut, ax, 0.66, 0.0, g);
-  }
-}
-
-function createLaptop(pos, rotY, worker) {
-  const g = new THREE.Group();
-  g.position.copy(pos);
-  g.rotation.y = rotY;
-  scene.add(g);
-  box(0.36, 0.015, 0.25, MAT.silver, 0, 0, 0, g);
-  box(0.30, 0.005, 0.13, MAT.matteBlack, 0, 0.01, 0.02, g, false, false);
-
-  const lid = new THREE.Group();
-  lid.position.set(0, 0.01, -0.12);
-  lid.rotation.x = -0.25;
-  g.add(lid);
-  box(0.36, 0.24, 0.01, MAT.silver, 0, 0.12, 0, lid);
-
+function attachLiveMonitor(screenMesh, worker) {
   const canvas = document.createElement('canvas');
-  canvas.width = 256;
-  canvas.height = 168;
+  canvas.width = 320;
+  canvas.height = 192;
   const ctx = canvas.getContext('2d');
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
-  const screenMesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.33, 0.21),
-    new THREE.MeshBasicMaterial({ map: tex })
-  );
-  screenMesh.position.set(0, 0.12, 0.007);
-  lid.add(screenMesh);
+  tex.flipY = true;
 
-  function redrawScreen(t) {
+  screenMesh.material = new THREE.MeshBasicMaterial({ map: tex });
+
+  function redraw(t) {
     const meta = STATUS_META[worker.status] || STATUS_META.idle;
-    ctx.fillStyle = worker.status === 'idle' ? '#faf6f0' : '#1f1914';
-    ctx.fillRect(0, 0, 256, 168);
-
     if (worker.status === 'idle') {
-      ctx.fillStyle = '#9a5b25';
-      ctx.font = 'bold 17px sans-serif';
-      ctx.fillText(worker.name.toUpperCase(), 18, 44);
-      ctx.fillStyle = '#6c5e52';
-      ctx.font = '15px sans-serif';
-      ctx.fillText('Sẵn sàng soạn thảo', 18, 84);
-      ctx.fillStyle = '#e5dacb';
-      ctx.fillRect(18, 108, 220, 6);
-    } else {
-      ctx.fillStyle = meta.css;
-      ctx.fillRect(0, 0, 256, 28);
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 13px monospace';
-      ctx.fillText(`${worker.name} • ${(worker.phaseLabel || meta.label).slice(0, 18)}`, 10, 19);
+      // Hình nền xanh Windows 11 mượt giống ảnh tham chiếu
+      const g = ctx.createLinearGradient(0, 0, 320, 192);
+      g.addColorStop(0, '#0ea5e9');
+      g.addColorStop(0.5, '#2563eb');
+      g.addColorStop(1, '#1e3a8a');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, 320, 192);
 
-      ctx.fillStyle = '#f5efe6';
-      ctx.font = '14px sans-serif';
-      ctx.fillText((worker.task || '').slice(0, 26), 12, 60);
+      // Sóng hoa xanh mềm
+      ctx.fillStyle = 'rgba(147, 197, 253, 0.35)';
+      ctx.beginPath();
+      ctx.arc(160, 108, 56 + Math.sin(t * 1.2) * 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(219, 234, 254, 0.45)';
+      ctx.beginPath();
+      ctx.arc(178, 96, 36, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = 'rgba(255,255,255,0.92)';
+      ctx.font = 'bold 16px sans-serif';
+      ctx.fillText(`${worker.name} • Sẵn sàng`, 16, 32);
+    } else {
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(0, 0, 320, 192);
+      ctx.fillStyle = meta.css;
+      ctx.fillRect(0, 0, 320, 32);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 14px monospace';
+      ctx.fillText(`${worker.name} • ${(worker.phaseLabel || meta.label).slice(0, 20)}`, 12, 22);
+
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = '15px sans-serif';
+      ctx.fillText((worker.task || '').slice(0, 30), 14, 68);
 
       if (worker.status === 'working') {
-        const barX = 12 + ((t * 95) % 160);
-        ctx.fillStyle = '#3f342b';
-        ctx.fillRect(12, 80, 232, 12);
-        ctx.fillStyle = '#d99b52';
-        ctx.fillRect(barX, 80, 72, 12);
-        ctx.fillStyle = '#e6c79c';
-        ctx.font = '12px monospace';
-        ctx.fillText(`Đang biên soạn (${worker.elapsedSec}s)...`, 12, 122);
+        const barX = 14 + ((t * 120) % 200);
+        ctx.fillStyle = '#334155';
+        ctx.fillRect(14, 92, 292, 14);
+        ctx.fillStyle = '#38bdf8';
+        ctx.fillRect(barX, 92, 92, 14);
+        ctx.fillStyle = '#93c5fd';
+        ctx.font = '13px monospace';
+        ctx.fillText(`Đang biên soạn (${worker.elapsedSec}s)...`, 14, 140);
       } else if (worker.status === 'done') {
         ctx.fillStyle = '#4ade80';
-        ctx.font = 'bold 15px sans-serif';
-        ctx.fillText('✓ Đã hoàn thành văn bản', 12, 106);
+        ctx.font = 'bold 16px sans-serif';
+        ctx.fillText('✓ Đã hoàn thành văn bản', 14, 120);
       } else {
         ctx.fillStyle = '#f87171';
-        ctx.font = '13px sans-serif';
-        ctx.fillText('Có lỗi khi xử lý', 12, 106);
+        ctx.font = '14px sans-serif';
+        ctx.fillText('Có lỗi khi xử lý', 14, 120);
       }
     }
     tex.needsUpdate = true;
   }
 
-  return { redrawScreen };
+  monitorUpdaters.push(redraw);
 }
 
-const workerRigs = [];
-const clickable = [];
+const loader = new GLTFLoader();
+loader.load(
+  './assets/studio.glb?v=' + Date.now(),
+  (gltf) => {
+    const root = gltf.scene;
+    root.traverse((obj) => {
+      if (obj.isMesh) {
+        obj.castShadow = obj.name !== 'Floor' && obj.name !== 'Rug' && !obj.name.startsWith('Grout');
+        obj.receiveShadow = true;
+        if (obj.name === 'EmblemLogo') {
+          obj.castShadow = false;
+          if (obj.material) {
+            obj.material.transparent = true;
+            obj.material.alphaTest = 0.08;
+            obj.material.side = THREE.DoubleSide;
+          }
+        }
+      }
+    });
+    scene.add(root);
 
-WORKERS.forEach((w, idx) => {
-  createStudioChair(w.seatPos, w.facingY);
-  const laptop = createLaptop(w.laptopPos, w.laptopRotY, w);
+    // Liên kết 4 nhân vật Chibi & 4 màn hình từ file Blender
+    WORKERS.forEach((w, idx) => {
+      const workerRoot = root.getObjectByName(`Worker${idx}`);
+      const upper = root.getObjectByName(`Worker${idx}_Upper`);
+      const head = root.getObjectByName(`Worker${idx}_Head`);
+      const armL = root.getObjectByName(`Worker${idx}_ArmL`);
+      const armR = root.getObjectByName(`Worker${idx}_ArmR`);
+      const badge = root.getObjectByName(`Worker${idx}_Badge`);
+      const ring = root.getObjectByName(`Worker${idx}_Ring`);
+      const screen = root.getObjectByName(`MonitorScreen${idx}`);
 
-  const ringMat = new THREE.MeshBasicMaterial({
-    color: 0x9a5b25,
-    transparent: true,
-    opacity: 0,
-    side: THREE.DoubleSide,
-  });
-  const ring = new THREE.Mesh(new THREE.RingGeometry(0.54, 0.64, 32), ringMat);
-  ring.rotation.x = -Math.PI / 2;
-  ring.position.set(w.seatPos.x, 0.02, w.seatPos.z);
-  scene.add(ring);
+      if (ring) ring.visible = false;
+      if (screen) attachLiveMonitor(screen, w);
 
-  const person = new THREE.Group();
-  person.position.copy(w.seatPos);
-  person.rotation.y = w.facingY;
-  scene.add(person);
+      // Tạo hitbox trong suốt trên mỗi nhân vật để click dễ dàng
+      if (workerRoot) {
+        const hit = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.55, 0.55, 1.7, 12),
+          new THREE.MeshBasicMaterial({ visible: false })
+        );
+        hit.position.set(0, 0.85, 0);
+        hit.userData.workerIndex = idx;
+        workerRoot.add(hit);
+        clickable.push(hit);
+      }
 
-  const shirtMat = new THREE.MeshStandardMaterial({ color: w.shirt, roughness: 0.7 });
-  box(0.36, 0.11, 0.40, MAT.pants, 0, 0.56, 0.12, person);
-  box(0.36, 0.48, 0.11, MAT.pants, 0, 0.28, 0.30, person);
+      workerRigs.push({
+        worker: w,
+        upper,
+        head,
+        armL,
+        armR,
+        badge,
+        ring,
+        baseUpperY: upper ? upper.position.y : 0.56,
+        baseBadgeY: badge ? badge.position.y : 1.72,
+      });
+    });
+  },
+  undefined,
+  (err) => {
+    console.error('Lỗi tải studio.glb:', err);
+    showToast('Không tải được assets/studio.glb — kiểm tra lại file Blender!');
+  }
+);
 
-  const upperBody = new THREE.Group();
-  upperBody.position.set(0, 0.60, 0);
-  person.add(upperBody);
-
-  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.19, 0.58, 16), shirtMat);
-  torso.position.y = 0.29;
-  torso.castShadow = true;
-  upperBody.add(torso);
-
-  const armL = new THREE.Group();
-  armL.position.set(-0.22, 0.46, 0.02);
-  const armLMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.045, 0.48, 12), shirtMat);
-  armLMesh.rotation.x = Math.PI / 2.2;
-  armLMesh.position.set(0.02, -0.08, 0.22);
-  armLMesh.castShadow = true;
-  armL.add(armLMesh);
-  upperBody.add(armL);
-
-  const armR = new THREE.Group();
-  armR.position.set(0.22, 0.46, 0.02);
-  const armRMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.045, 0.48, 12), shirtMat);
-  armRMesh.rotation.x = Math.PI / 2.2;
-  armRMesh.position.set(-0.02, -0.08, 0.22);
-  armRMesh.castShadow = true;
-  armR.add(armRMesh);
-  upperBody.add(armR);
-
-  const headGroup = new THREE.Group();
-  headGroup.position.set(0, 0.68, 0);
-  upperBody.add(headGroup);
-
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.14, 18, 14), MAT.skin);
-  head.scale.set(0.95, 1.08, 0.95);
-  head.castShadow = true;
-  headGroup.add(head);
-
-  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.145, 16, 12), MAT.hair);
-  hair.scale.set(1.0, 0.65, 1.0);
-  hair.position.set(0, 0.06, -0.02);
-  headGroup.add(hair);
-
-  const badgeMat = new THREE.MeshBasicMaterial({ color: STATUS_META.idle.color });
-  const badge = new THREE.Mesh(new THREE.SphereGeometry(0.065, 16, 12), badgeMat);
-  badge.position.set(0, 1.66, 0);
-  person.add(badge);
-
-  const hitbox = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.55, 0.55, 1.65, 12),
-    new THREE.MeshBasicMaterial({ visible: false })
-  );
-  hitbox.position.set(0, 0.85, 0.2);
-  hitbox.userData.workerIndex = idx;
-  clickable.push(hitbox);
-  person.add(hitbox);
-
-  workerRigs.push({
-    worker: w,
-    upperBody,
-    headGroup,
-    armL,
-    armR,
-    badge,
-    badgeMat,
-    ringMat,
-    laptop,
-    focusTarget: new THREE.Vector3(w.seatPos.x * 0.65, 0.85, w.seatPos.z * 0.55),
-  });
-});
-
-// Quả cầu ánh sáng chuyển tài liệu sang Vy (Bàn 4) trong Pha 2
+// Quả cầu ánh sáng chuyển bản thảo sang Vy (Bàn 4) trong Pha 2
 const syncOrbs = [0, 1, 2].map((srcIdx) => {
   const orb = new THREE.Mesh(
     new THREE.SphereGeometry(0.06, 14, 12),
-    new THREE.MeshBasicMaterial({ color: 0xd99b52 })
+    new THREE.MeshBasicMaterial({ color: 0x38bdf8 })
   );
   orb.visible = false;
   scene.add(orb);
@@ -598,6 +288,7 @@ let autoOrbit = false;
 let camLerpTarget = null;
 let allResults = [];
 let currentDialogData = null;
+let pipelineInfo = { active: false, phase: 'idle', message: 'Sẵn sàng nhận lệnh' };
 
 const elSummary = document.getElementById('office-summary');
 const elOfficeDot = document.getElementById('office-dot');
@@ -684,7 +375,6 @@ function showToast(msg, onClick = null) {
   setTimeout(() => t.remove(), 5500);
 }
 
-// Fallback bắt buộc cho <dialog closedby="any">
 function bindDialogLightDismissFallback(dialog) {
   if ('closedBy' in HTMLDialogElement.prototype) return;
   dialog.addEventListener('click', (event) => {
@@ -770,7 +460,6 @@ document.getElementById('btn-res-copy').addEventListener('click', async () => {
   showToast('Đã copy toàn bộ văn bản!');
 });
 
-// Xuất trực tiếp sang file Word (.doc) mở đẹp ngay trên Microsoft Word
 document.getElementById('btn-res-word').addEventListener('click', () => {
   if (!currentDialogData) return;
   const htmlBody = renderMarkdownSafe(currentDialogData.content || '');
@@ -795,7 +484,6 @@ document.getElementById('btn-res-word').addEventListener('click', () => {
   showToast('Đã tải file Word (.doc) — mở trực tiếp bằng Microsoft Word!');
 });
 
-// Cài đặt AI cho máy tính khác
 async function openSettings() {
   try {
     const resp = await fetch('/api/config');
@@ -956,16 +644,20 @@ function renderInspector() {
 function selectWorker(idx, focusCam = false) {
   selectedIdx = idx;
   elInspector.classList.remove('hidden');
-  workerRigs.forEach((r, i) => { r.ringMat.opacity = i === idx ? 0.78 : 0; });
+  workerRigs.forEach((r, i) => {
+    if (r.ring) r.ring.visible = i === idx;
+  });
   renderInspector();
   renderStationDock();
-  if (focusCam) camLerpTarget = workerRigs[idx].focusTarget.clone();
+  if (focusCam) camLerpTarget = WORKERS[idx].focusPos.clone();
 }
 
 function closeInspector() {
   selectedIdx = -1;
   elInspector.classList.add('hidden');
-  workerRigs.forEach((r) => { r.ringMat.opacity = 0; });
+  workerRigs.forEach((r) => {
+    if (r.ring) r.ring.visible = false;
+  });
   renderStationDock();
 }
 
@@ -992,7 +684,11 @@ async function syncState() {
       WORKERS[i].error = sw.error;
 
       const meta = STATUS_META[sw.status] || STATUS_META.idle;
-      workerRigs[i].badgeMat.color.setHex(meta.color);
+      const rig = workerRigs[i];
+      if (rig && rig.badge && rig.badge.material) {
+        rig.badge.material.color.setHex(meta.color);
+        if (rig.badge.material.emissive) rig.badge.material.emissive.setHex(meta.color);
+      }
 
       if (prevStatus === 'working' && sw.status === 'done' && sw.lastResultId) {
         const rid = sw.lastResultId;
@@ -1003,7 +699,6 @@ async function syncState() {
     updateSummary();
     renderStationDock();
     renderGlobalResults();
-    redrawEditorialBoard();
     if (selectedIdx >= 0) renderInspector();
   } catch {
     elEngineBadge.textContent = 'Mất kết nối server';
@@ -1087,7 +782,7 @@ btnViewDefault.addEventListener('click', () => {
   btnViewTop.classList.remove('active');
 });
 btnViewTop.addEventListener('click', () => {
-  camera.position.set(0.1, 10.2, 3.2);
+  camera.position.set(0.0, 9.2, 2.8);
   camLerpTarget = DEFAULT_TARGET.clone();
   btnViewTop.classList.add('active');
   btnViewDefault.classList.remove('active');
@@ -1135,12 +830,11 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-redrawEditorialBoard();
 syncState();
 setInterval(syncState, 2000);
 
 // ============================================================
-// VÒNG LẶP 60 FPS
+// VÒNG LẶP 60 FPS — ANIMATION NHÂN VẬT CHIBI TỪ BLENDER
 // ============================================================
 const clock = new THREE.Clock();
 let screenAccum = 0;
@@ -1155,41 +849,52 @@ function animate() {
     const w = rig.worker;
     const isWorking = w.status === 'working';
 
-    if (isWorking) {
-      rig.upperBody.rotation.x = THREE.MathUtils.lerp(rig.upperBody.rotation.x, 0.16, 0.1);
-      rig.armL.rotation.x = Math.sin(t * 11 + i) * 0.14;
-      rig.armR.rotation.x = Math.sin(t * 11 + i + Math.PI) * 0.14;
-      rig.headGroup.rotation.y = Math.sin(t * 1.1 + i) * 0.08;
-      rig.headGroup.rotation.x = 0.15 + Math.sin(t * 2.5 + i) * 0.03;
-    } else {
-      rig.upperBody.rotation.x = THREE.MathUtils.lerp(rig.upperBody.rotation.x, -0.05, 0.08);
-      rig.armL.rotation.x = THREE.MathUtils.lerp(rig.armL.rotation.x, -0.34, 0.08);
-      rig.armR.rotation.x = THREE.MathUtils.lerp(rig.armR.rotation.x, -0.34, 0.08);
-      rig.headGroup.rotation.y = Math.sin(t * 0.45 + i * 2.1) * 0.25;
-      rig.headGroup.rotation.x = THREE.MathUtils.lerp(rig.headGroup.rotation.x, -0.02, 0.08);
+    // Trong glTF Y-up: hướng nhìn nhân vật (Blender +Y) là Three.js -Z, nên cúi về trước là rotation.x âm
+    if (rig.upper) {
+      const targetLean = isWorking ? -0.14 : 0.04;
+      rig.upper.rotation.x = THREE.MathUtils.lerp(rig.upper.rotation.x, targetLean, 0.1);
+      rig.upper.position.y = rig.baseUpperY + Math.sin(t * 2.0 + i) * 0.008;
     }
-
-    rig.upperBody.position.y = 0.60 + Math.sin(t * 1.8 + i) * 0.008;
-    rig.badge.position.y = 1.66 + Math.sin(t * 2.4 + i) * (isWorking ? 0.045 : 0.015);
+    if (rig.armL && rig.armR) {
+      if (isWorking) {
+        rig.armL.rotation.x = Math.sin(t * 12 + i) * 0.14;
+        rig.armR.rotation.x = Math.sin(t * 12 + i + Math.PI) * 0.14;
+      } else {
+        rig.armL.rotation.x = THREE.MathUtils.lerp(rig.armL.rotation.x, 0.25, 0.08);
+        rig.armR.rotation.x = THREE.MathUtils.lerp(rig.armR.rotation.x, 0.25, 0.08);
+      }
+    }
+    if (rig.head) {
+      if (isWorking) {
+        rig.head.rotation.y = Math.sin(t * 1.1 + i) * 0.09;
+        rig.head.rotation.x = -0.10 + Math.sin(t * 2.6 + i) * 0.03;
+      } else {
+        rig.head.rotation.y = Math.sin(t * 0.55 + i * 2.1) * 0.28;
+        rig.head.rotation.x = THREE.MathUtils.lerp(rig.head.rotation.x, 0.02, 0.08);
+      }
+    }
+    if (rig.badge) {
+      rig.badge.position.y = rig.baseBadgeY + Math.sin(t * 2.5 + i) * (isWorking ? 0.045 : 0.015);
+    }
   });
 
-  // Hiệu ứng quả cầu truyền bản thảo sang Vy (Bàn 4) trong Pha 2
+  // Quả cầu ánh sáng truyền bản thảo sang Vy (Bàn 4) trong Pha 2
   const isPhase2 = pipelineInfo.active && pipelineInfo.phase === 'phase2';
-  const vyPos = WORKERS[3].laptopPos;
+  const vyAnchor = WORKERS[3].orbAnchor;
   syncOrbs.forEach(({ orb, srcIdx }, k) => {
     orb.visible = isPhase2;
     if (isPhase2) {
       const p = (t * 0.75 + k * 0.33) % 1;
-      const from = WORKERS[srcIdx].laptopPos;
-      orb.position.lerpVectors(from, vyPos, p);
-      orb.position.y += Math.sin(p * Math.PI) * 0.45 + 0.18;
+      const from = WORKERS[srcIdx].orbAnchor;
+      orb.position.lerpVectors(from, vyAnchor, p);
+      orb.position.y += Math.sin(p * Math.PI) * 0.45 + 0.15;
     }
   });
 
   screenAccum += dt;
   if (screenAccum >= 0.12) {
     screenAccum = 0;
-    workerRigs.forEach((rig) => rig.laptop.redrawScreen(t));
+    monitorUpdaters.forEach((fn) => fn(t));
   }
 
   clockAccum += dt;
