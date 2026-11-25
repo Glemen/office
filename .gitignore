@@ -1,0 +1,7 @@
+results/
+config.local.json
+__pycache__/
+*.pyc
+*.blend
+*.png
+.env

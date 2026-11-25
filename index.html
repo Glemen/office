@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Phòng Biên Tập Văn Bản 3D — AI Document Studio</title>
+  <link rel="stylesheet" href="./style.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/controls/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="canvas-wrap" aria-label="Phòng biên tập văn bản 3D tương tác"></div>
+
+  <!-- Minimal Floating Top Bar -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="status-dot" id="office-dot" aria-hidden="true"></span>
+      <div>
+        <h1>PHÒNG BIÊN TẬP VĂN BẢN 3D <span class="engine-badge" id="engine-badge">Đang kết nối...</span></h1>
+        <p class="meta">
+          <span id="office-summary">4/4 chuyên viên đang chờ việc</span>
+          <span aria-hidden="true">•</span>
+          <span id="live-clock" class="mono">--:--:--</span>
+        </p>
+      </div>
+    </div>
+
+    <div class="topbar-actions" role="toolbar" aria-label="Điều khiển phòng làm việc">
+      <button type="button" class="chip active" id="btn-view-default">Góc chuẩn</button>
+      <button type="button" class="chip" id="btn-view-top">Từ trên</button>
+      <button type="button" class="chip" id="btn-orbit" aria-pressed="false">Xoay nhẹ</button>
+      <button type="button" class="chip chip-primary" id="btn-toggle-results" aria-expanded="false">
+        Kho văn bản (<span id="results-count">0</span>)
+      </button>
+      <button type="button" class="chip" id="btn-open-settings" title="Cấu hình nguồn AI để dùng trên mọi máy tính">Cài đặt AI</button>
+    </div>
+  </header>
+
+  <!-- Left Specialist Dock -->
+  <nav class="station-dock" id="station-dock" aria-label="4 chuyên viên văn bản"></nav>
+
+  <!-- Toast Area -->
+  <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+
+  <!-- Left Drawer: Document Archive -->
+  <aside class="drawer left-drawer hidden" id="results-drawer" aria-label="Kho văn bản đã hoàn thành">
+    <div class="drawer-head">
+      <div>
+        <h2>Kho văn bản đã làm</h2>
+        <p class="role-text">Bấm vào bất kỳ văn bản nào để đọc, copy hoặc tải file Word (.doc)</p>
+      </div>
+      <button type="button" class="icon-btn" id="btn-close-results" aria-label="Đóng kho văn bản">✕</button>
+    </div>
+    <ul class="results-list" id="global-results">
+      <li class="empty-state">Chưa có văn bản nào. Hãy nhập yêu cầu ở thanh bên dưới để giao việc.</li>
+    </ul>
+  </aside>
+
+  <!-- Right Drawer: Specialist Inspector -->
+  <aside class="drawer right-drawer hidden" id="inspector" aria-label="Chi tiết chuyên viên">
+    <div class="drawer-head">
+      <div>
+        <span class="desk-tag" id="insp-id">BÀN 1</span>
+        <h2 id="insp-name">Minh</h2>
+        <p class="role-text" id="insp-role">Nghiên cứu &amp; Lập dàn ý</p>
+      </div>
+      <button type="button" class="icon-btn" id="btn-close-insp" aria-label="Đóng bảng chi tiết">✕</button>
+    </div>
+
+    <div class="card-block">
+      <div class="row-between">
+        <span class="kicker">Trạng thái</span>
+        <span class="state-badge idle" id="insp-status">Đang chờ việc</span>
+      </div>
+
+      <div class="task-box">
+        <p class="task-name" id="insp-task">Chưa được giao việc — sẵn sàng nhận lệnh.</p>
+        <div class="working-bar hidden" id="insp-working-bar">
+          <span class="spinner" aria-hidden="true"></span>
+          <span id="insp-elapsed">Đang xử lý...</span>
+        </div>
+      </div>
+
+      <div class="insp-actions hidden" id="insp-working-actions">
+        <button type="button" class="btn-danger full" id="btn-cancel-task">Hủy tác vụ</button>
+      </div>
+
+      <div class="insp-actions hidden" id="insp-done-actions">
+        <button type="button" class="btn-primary full" id="btn-view-last-result">Mở văn bản vừa làm</button>
+      </div>
+    </div>
+
+    <div class="card-block">
+      <span class="kicker">Giao đích danh cho chuyên viên này</span>
+      <form id="insp-assign-form" class="inline-form">
+        <input
+          type="text"
+          id="insp-assign-input"
+          required
+          minlength="2"
+          maxlength="300"
+          placeholder="Nhập yêu cầu văn bản..."
+        />
+        <button type="submit" class="btn-primary">Giao</button>
+      </form>
+    </div>
+
+    <div class="card-block">
+      <span class="kicker">Văn bản đã thực hiện (<span id="insp-done-count">0</span>)</span>
+      <ul class="history-list" id="insp-history">
+        <li class="empty-state">Chưa có văn bản nào.</li>
+      </ul>
+    </div>
+  </aside>
+
+  <!-- Bottom-Center Smart Document Dispatcher -->
+  <section class="command-dock" aria-label="Thanh giao nhiệm vụ văn bản thông minh">
+    <div class="mode-tabs" role="radiogroup" aria-label="Chế độ phân công">
+      <label class="mode-tab active">
+        <input type="radio" name="dispatch-mode" value="auto-best" checked />
+        <span>Tự chọn người giỏi nhất</span>
+      </label>
+      <label class="mode-tab">
+        <input type="radio" name="dispatch-mode" value="split-merge" />
+        <span>Dự án lớn: Chia 3 bàn &amp; Vy tổng hợp</span>
+      </label>
+      <label class="mode-tab">
+        <input type="radio" name="dispatch-mode" value="direct" />
+        <span>Chọn đích danh bàn</span>
+      </label>
+    </div>
+
+    <form id="command-form" class="command-form">
+      <label class="sr-only" for="cmd-assignee">Chọn chuyên viên</label>
+      <select id="cmd-assignee" class="cmd-select hidden" title="Chọn bàn nhận việc"></select>
+
+      <label class="sr-only" for="cmd-input">Nội dung văn bản cần làm</label>
+      <input
+        id="cmd-input"
+        class="cmd-input"
+        type="text"
+        required
+        minlength="3"
+        maxlength="400"
+        placeholder="VD: Soạn công văn đề xuất nâng cấp thiết bị, Lập đề án tổ chức hội nghị, Rà soát hợp đồng..."
+      />
+
+      <button type="submit" class="btn-primary cmd-submit" id="btn-cmd-submit">Giao việc</button>
+    </form>
+  </section>
+
+  <!-- Native Modal Dialog: Result Viewer (Copy + Word .doc + Markdown .md) -->
+  <dialog id="result-dialog" class="modal-dialog result-dialog" closedby="any" aria-labelledby="res-dialog-title">
+    <div class="modal-head">
+      <div>
+        <span class="desk-tag" id="res-dialog-worker">BÀN 4 • Vy</span>
+        <h2 id="res-dialog-title">Văn bản hoàn chỉnh</h2>
+        <p class="role-text" id="res-dialog-meta">—</p>
+      </div>
+      <button type="button" class="icon-btn" id="btn-res-close" aria-label="Đóng cửa sổ kết quả">✕</button>
+    </div>
+
+    <div class="res-body" id="res-dialog-content"></div>
+
+    <div class="modal-foot">
+      <span class="mono res-path" id="res-dialog-file">results/...</span>
+      <div class="modal-foot-btns">
+        <button type="button" class="btn-outline" id="btn-res-copy">Copy</button>
+        <button type="button" class="btn-outline" id="btn-res-word">Tải Word (.doc)</button>
+        <a class="btn-primary" id="btn-res-download" download>Tải .md</a>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Native Modal Dialog: Portable AI Settings (for any PC) -->
+  <dialog id="settings-dialog" class="modal-dialog settings-dialog" closedby="any" aria-labelledby="set-title">
+    <form id="settings-form">
+      <div class="modal-head">
+        <div>
+          <span class="desk-tag">CẤU HÌNH DI ĐỘNG</span>
+          <h2 id="set-title">Cài đặt nguồn AI</h2>
+          <p class="role-text">Dùng ngay trên mọi máy tính — không cần cài thêm thư viện.</p>
+        </div>
+        <button type="button" class="icon-btn" id="btn-set-close" aria-label="Đóng cài đặt">✕</button>
+      </div>
+
+      <div class="settings-body">
+        <div class="form-field">
+          <label for="cfg-provider">Nguồn AI ưu tiên</label>
+          <select id="cfg-provider">
+            <option value="auto">Tự động (Antigravity → Gemini → Ollama/OpenAI)</option>
+            <option value="antigravity">Antigravity đang chạy trên máy</option>
+            <option value="gemini">Google Gemini API (miễn phí tại aistudio.google.com)</option>
+            <option value="openai">Ollama nội bộ / OpenAI-compatible API</option>
+          </select>
+        </div>
+
+        <div class="form-field">
+          <label for="cfg-gemini-key">Google Gemini API Key (để trống nếu giữ nguyên)</label>
+          <input id="cfg-gemini-key" type="password" placeholder="AIza..." autocomplete="off" />
+        </div>
+
+        <div class="form-field">
+          <label for="cfg-gemini-model">Model Gemini</label>
+          <input id="cfg-gemini-model" type="text" value="gemini-2.5-flash" />
+        </div>
+
+        <div class="form-field">
+          <label for="cfg-openai-url">Ollama / OpenAI Base URL</label>
+          <input id="cfg-openai-url" type="url" value="http://localhost:11434/v1" />
+        </div>
+
+        <div class="form-row">
+          <div class="form-field">
+            <label for="cfg-openai-model">Model Ollama / OpenAI</label>
+            <input id="cfg-openai-model" type="text" value="qwen2.5:7b" />
+          </div>
+          <div class="form-field">
+            <label for="cfg-openai-key">OpenAI Key (nếu có)</label>
+            <input id="cfg-openai-key" type="password" placeholder="sk-... (Ollama bỏ trống)" autocomplete="off" />
+          </div>
+        </div>
+
+        <label class="checkbox-row">
+          <input type="checkbox" id="cfg-archive-agy" checked />
+          <span>Tự động ẩn (archive) hội thoại Antigravity sau khi lưu xong kết quả để gọn sidebar</span>
+        </label>
+      </div>
+
+      <div class="modal-foot">
+        <span class="role-text" id="cfg-status-hint">Lưu cục bộ tại config.local.json</span>
+        <div class="modal-foot-btns">
+          <button type="button" class="btn-outline" id="btn-set-cancel">Đóng</button>
+          <button type="submit" class="btn-primary">Lưu cài đặt</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="./office.js"></script>
+</body>
+</html>
