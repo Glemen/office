@@ -6,3 +6,6 @@ __pycache__/
 *.png
 !assets/emblem.png
 .env
+.venv/
+build/
+*.spec

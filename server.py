@@ -13,21 +13,25 @@ Hỗ trợ 3 chế độ giao việc:
 import json
 import os
 import re
+import sys
 import threading
 import time
 import urllib.error
 import urllib.request
+import webbrowser
 from datetime import datetime
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("OFFICE_PORT", "8080"))
-BASE_DIR = Path(__file__).resolve().parent
-RESULTS_DIR = BASE_DIR / "results"
+IS_FROZEN = getattr(sys, "frozen", False)
+RESOURCE_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+APP_DIR = Path(sys.executable).resolve().parent if IS_FROZEN else Path(__file__).resolve().parent
+RESULTS_DIR = APP_DIR / "results"
 RESULTS_DIR.mkdir(exist_ok=True)
 INDEX_FILE = RESULTS_DIR / "index.json"
-CONFIG_FILE = BASE_DIR / "config.local.json"
+CONFIG_FILE = APP_DIR / "config.local.json"
 
 LS_ADDRESS = os.environ.get("ANTIGRAVITY_LS_ADDRESS", "")
 CSRF_TOKEN = os.environ.get("ANTIGRAVITY_CSRF_TOKEN", "")
@@ -523,7 +527,7 @@ def run_split_merge_job(task_text: str):
 # ============================================================
 class StudioHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory=str(BASE_DIR), **kwargs)
+        super().__init__(*args, directory=str(RESOURCE_DIR), **kwargs)
 
     def send_json(self, data, status=200):
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
@@ -535,6 +539,20 @@ class StudioHandler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        if self.path.startswith("/results/"):
+            fname = urllib.request.unquote(self.path.split("/results/", 1)[1].split("?", 1)[0])
+            target = (RESULTS_DIR / Path(fname).name).resolve()
+            if target.parent == RESULTS_DIR.resolve() and target.is_file():
+                data = target.read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/markdown; charset=utf-8")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+                return
+            self.send_json({"error": "File not found"}, 404)
+            return
+
         if self.path == "/api/state":
             with STATE_LOCK:
                 now = time.time()
@@ -701,6 +719,25 @@ class StudioHandler(SimpleHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    srv = ThreadingHTTPServer((HOST, PORT), StudioHandler)
-    print(f"Editorial Document Studio 3D running at http://{HOST}:{PORT} | AI Provider: {active_provider()}")
+    srv = None
+    chosen_port = PORT
+    for p in range(PORT, PORT + 15):
+        try:
+            srv = ThreadingHTTPServer((HOST, p), StudioHandler)
+            chosen_port = p
+            break
+        except OSError:
+            continue
+    if srv is None:
+        raise RuntimeError(f"Không tìm thấy cổng trống từ {PORT} đến {PORT + 14}")
+    url = f"http://{HOST}:{chosen_port}"
+    print("=" * 60)
+    print(f"  PHONG BIEN TAP VAN BAN 3D - AI DOCUMENT STUDIO")
+    print(f"  Dang chay tai : {url}")
+    print(f"  Nguon AI      : {active_provider().upper()}")
+    print(f"  Thu muc ket qua: {RESULTS_DIR}")
+    print("  (Giu cua so nay mo khi su dung; dong cua so de tat)")
+    print("=" * 60)
+    if IS_FROZEN:
+        threading.Timer(0.9, lambda: webbrowser.open(url)).start()
     srv.serve_forever()
