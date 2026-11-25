@@ -215,12 +215,47 @@ def build_room():
     # ============================================================
     # BIỂU TRƯNG / LOGO HIỆU TRANG TRỌNG TRÊN TƯỜNG SAU (GIỮA PHÒNG)
     # ============================================================
-    emblem_grp = add_empty("WallEmblem", (0.25, 4.10, 2.38), parent=room)
-    # Bảng nền tròn/chữ nhật nổi nhẹ có viền vàng đồng trang trọng
-    add_cyl("EmblemPlaque", (0, 0.02, 0), 0.72, 0.04, MAT["walnut_dark"], rot=(rad(90), 0, 0), verts=48, parent=emblem_grp)
-    add_cyl("EmblemRim", (0, 0.015, 0), 0.75, 0.025, MAT["gold_frame"], rot=(rad(90), 0, 0), verts=48, parent=emblem_grp)
-    # Mặt ảnh logo PNG (tỷ lệ ngang ~1.25:1) hướng về phía camera (-Y)
-    add_plane("EmblemLogo", (0, -0.02, 0), (1.18, 0.94), MAT["emblem"], rot=(rad(90), 0, 0), parent=emblem_grp)
+    emblem_grp = add_empty("WallEmblem", (0.25, 4.10, 2.42), parent=room)
+    add_cyl("EmblemPlaque", (0, 0.02, 0), 0.74, 0.04, MAT["walnut_dark"], rot=(rad(90), 0, 0), verts=48, parent=emblem_grp)
+    add_cyl("EmblemRim", (0, 0.015, 0), 0.77, 0.025, MAT["gold_frame"], rot=(rad(90), 0, 0), verts=48, parent=emblem_grp)
+    add_plane("EmblemLogo", (0, -0.02, 0), (1.20, 0.96), MAT["emblem"], rot=(rad(90), 0, 0), parent=emblem_grp)
+    # Đèn rọi tranh mạ vàng phía trên biểu trưng
+    add_box("EmblemLightBar", (0, -0.10, 0.90), (0.68, 0.06, 0.035), MAT["gold_frame"], bevel=0.005, parent=emblem_grp)
+    add_box("EmblemLightGlow", (0, -0.10, 0.88), (0.62, 0.03, 0.012), MAT["gold_led"], parent=emblem_grp)
+
+    # Tủ hồ sơ lưu trữ gỗ óc chó sát tường trái + Đồng hồ treo tường chạy giờ thực
+    cab = add_empty("ArchiveCabinet", (-4.82, -0.35, 0), parent=room)
+    add_box("CabBody", (0, 0, 1.08), (0.48, 2.50, 2.16), MAT["walnut"], bevel=0.01, parent=cab)
+    binder_mats = [
+        make_mat("BinderRed", (0.58, 0.12, 0.12, 1.0), rough=0.6),
+        make_mat("BinderBlue", (0.10, 0.25, 0.52, 1.0), rough=0.6),
+        make_mat("BinderGreen", (0.12, 0.38, 0.22, 1.0), rough=0.6),
+        MAT["gold_frame"],
+    ]
+    for sh_idx, sz in enumerate((0.68, 1.25, 1.80)):
+        add_box(f"CabShelf_{sh_idx}", (0.03, 0, sz - 0.20), (0.42, 2.38, 0.035), MAT["walnut_dark"], parent=cab)
+        for b in range(11):
+            if b in (4, 8):
+                continue
+            by = -1.02 + b * 0.20
+            add_box(
+                f"Binder_{sh_idx}_{b}",
+                (0.08, by, sz),
+                (0.26, 0.075, 0.32),
+                binder_mats[(b + sh_idx) % len(binder_mats)],
+                parent=cab,
+            )
+
+    # Đồng hồ treo tường viền vàng đồng trên tường trái (có kim quay giờ thực trong Three.js!)
+    clk = add_empty("WallClock", (-5.12, -2.55, 2.55), rot=(0, 0, rad(-90)), parent=room)
+    add_cyl("ClockRim", (0, 0.01, 0), 0.34, 0.05, MAT["gold_frame"], rot=(rad(90), 0, 0), verts=36, parent=clk)
+    add_cyl("ClockFace", (0, -0.02, 0), 0.30, 0.02, MAT["paper"], rot=(rad(90), 0, 0), verts=36, parent=clk)
+    h_piv = add_empty("ClockHour", (0, -0.035, 0), parent=clk)
+    add_box("ClockHourMesh", (0, 0, 0.075), (0.022, 0.008, 0.16), MAT["black_matte"], parent=h_piv)
+    m_piv = add_empty("ClockMinute", (0, -0.042, 0), parent=clk)
+    add_box("ClockMinMesh", (0, 0, 0.105), (0.015, 0.008, 0.22), MAT["black_matte"], parent=m_piv)
+    s_piv = add_empty("ClockSecond", (0, -0.048, 0), parent=clk)
+    add_box("ClockSecMesh", (0, 0, 0.115), (0.008, 0.006, 0.24), binder_mats[0], parent=s_piv)
 
     # Cây xanh trong chậu sứ trắng có sỏi trắng ở góc sau-trái
     build_plant("CornerPlant", (-4.35, 3.35, 0), 1.0, room)
@@ -374,10 +409,11 @@ def build_chibi_worker(idx, name, x, y, rot_z, is_female=False):
     add_sphere(f"W{idx}_EarL", (-0.235, 0.0, 0.22), (0.042, 0.036, 0.055), MAT["skin"], segs=12, rings=8, parent=head_joint)
     add_sphere(f"W{idx}_EarR", (0.235, 0.0, 0.22), (0.042, 0.036, 0.055), MAT["skin"], segs=12, rings=8, parent=head_joint)
 
-    # Đôi mắt to long lanh + điểm sáng trắng + má hồng + lông mày (hướng +Y)
+    # Đôi mắt to long lanh (nhóm vào Worker{idx}_Eyes để nháy mắt tự nhiên!) + má hồng + lông mày
+    eyes_joint = add_empty(f"Worker{idx}_Eyes", (0, 0.205, 0.22), parent=head_joint)
     for ex in (-0.085, 0.085):
-        add_sphere(f"W{idx}_Eye_{ex}", (ex, 0.205, 0.22), (0.042, 0.025, 0.048), MAT["eye_dark"], segs=16, rings=12, parent=head_joint)
-        add_sphere(f"W{idx}_Shine_{ex}", (ex + 0.014, 0.226, 0.238), (0.013, 0.009, 0.015), MAT["eye_white"], segs=10, rings=8, parent=head_joint)
+        add_sphere(f"W{idx}_Eye_{ex}", (ex, 0.0, 0.0), (0.042, 0.025, 0.048), MAT["eye_dark"], segs=16, rings=12, parent=eyes_joint)
+        add_sphere(f"W{idx}_Shine_{ex}", (ex + 0.014, 0.021, 0.018), (0.013, 0.009, 0.015), MAT["eye_white"], segs=10, rings=8, parent=eyes_joint)
         add_sphere(f"W{idx}_Blush_{ex}", (ex * 1.45, 0.195, 0.165), (0.035, 0.015, 0.020), MAT["blush"], segs=12, rings=8, parent=head_joint)
         add_box(f"W{idx}_Brow_{ex}", (ex, 0.212, 0.295), (0.065, 0.014, 0.014), MAT["hair_dark"], rot=(0, rad(-6 if ex < 0 else 6), 0), bevel=0.004, parent=head_joint)
 

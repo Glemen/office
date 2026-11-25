@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Phòng Biên Tập Văn Bản 3D — AI Document Studio</title>
+  <title>Phòng Biên Tập Văn Bản 3D — Chuẩn Nghị định 30/2020/NĐ-CP</title>
   <link rel="stylesheet" href="./style.css" />
   <script type="importmap">
     {
@@ -17,14 +17,22 @@
 <body>
   <div id="canvas-wrap" aria-label="Phòng biên tập văn bản 3D tương tác"></div>
 
+  <!-- 3D Floating Nameplates Overlay -->
+  <div id="labels-layer" class="labels-layer" aria-hidden="true"></div>
+
   <!-- Minimal Floating Top Bar -->
   <header class="topbar">
     <div class="brand">
       <span class="status-dot" id="office-dot" aria-hidden="true"></span>
       <div>
-        <h1>PHÒNG BIÊN TẬP VĂN BẢN 3D <span class="engine-badge" id="engine-badge">Đang kết nối...</span></h1>
+        <h1>
+          PHÒNG BIÊN TẬP VĂN BẢN 3D
+          <span class="engine-badge" id="engine-badge">Đang kết nối...</span>
+        </h1>
         <p class="meta">
-          <span id="office-summary">4/4 chuyên viên đang chờ việc</span>
+          <span id="office-summary">4/4 chuyên viên sẵn sàng</span>
+          <span aria-hidden="true">•</span>
+          <span id="org-unit-label">Chuẩn Nghị định 30/2020/NĐ-CP</span>
           <span aria-hidden="true">•</span>
           <span id="live-clock" class="mono">--:--:--</span>
         </p>
@@ -33,12 +41,13 @@
 
     <div class="topbar-actions" role="toolbar" aria-label="Điều khiển phòng làm việc">
       <button type="button" class="chip active" id="btn-view-default">Góc chuẩn</button>
+      <button type="button" class="chip" id="btn-view-emblem">Góc Biểu trưng</button>
       <button type="button" class="chip" id="btn-view-top">Từ trên</button>
       <button type="button" class="chip" id="btn-orbit" aria-pressed="false">Xoay nhẹ</button>
       <button type="button" class="chip chip-primary" id="btn-toggle-results" aria-expanded="false">
         Kho văn bản (<span id="results-count">0</span>)
       </button>
-      <button type="button" class="chip" id="btn-open-settings" title="Cấu hình nguồn AI để dùng trên mọi máy tính">Cài đặt AI</button>
+      <button type="button" class="chip" id="btn-open-settings" title="Cấu hình Đơn vị & Nguồn AI">Cài đặt</button>
     </div>
   </header>
 
@@ -52,13 +61,13 @@
   <aside class="drawer left-drawer hidden" id="results-drawer" aria-label="Kho văn bản đã hoàn thành">
     <div class="drawer-head">
       <div>
-        <h2>Kho văn bản đã làm</h2>
-        <p class="role-text">Bấm vào bất kỳ văn bản nào để đọc, copy hoặc tải file Word (.doc)</p>
+        <h2>Kho văn bản chuẩn NĐ30</h2>
+        <p class="role-text">Bấm vào văn bản để xem, chỉnh sửa nhanh, tải Word (.docx) hoặc in PDF A4</p>
       </div>
       <button type="button" class="icon-btn" id="btn-close-results" aria-label="Đóng kho văn bản">✕</button>
     </div>
     <ul class="results-list" id="global-results">
-      <li class="empty-state">Chưa có văn bản nào. Hãy nhập yêu cầu ở thanh bên dưới để giao việc.</li>
+      <li class="empty-state">Chưa có văn bản nào. Hãy chọn mẫu hoặc nhập yêu cầu ở thanh bên dưới.</li>
     </ul>
   </aside>
 
@@ -68,7 +77,7 @@
       <div>
         <span class="desk-tag" id="insp-id">BÀN 1</span>
         <h2 id="insp-name">Minh</h2>
-        <p class="role-text" id="insp-role">Nghiên cứu &amp; Lập dàn ý</p>
+        <p class="role-text" id="insp-role">Nghiên cứu &amp; Đề cương</p>
       </div>
       <button type="button" class="icon-btn" id="btn-close-insp" aria-label="Đóng bảng chi tiết">✕</button>
     </div>
@@ -104,7 +113,7 @@
           id="insp-assign-input"
           required
           minlength="2"
-          maxlength="300"
+          maxlength="400"
           placeholder="Nhập yêu cầu văn bản..."
         />
         <button type="submit" class="btn-primary">Giao</button>
@@ -121,22 +130,51 @@
 
   <!-- Bottom-Center Smart Document Dispatcher -->
   <section class="command-dock" aria-label="Thanh giao nhiệm vụ văn bản thông minh">
-    <div class="mode-tabs" role="radiogroup" aria-label="Chế độ phân công">
-      <label class="mode-tab active">
-        <input type="radio" name="dispatch-mode" value="auto-best" checked />
-        <span>Tự chọn người giỏi nhất</span>
-      </label>
-      <label class="mode-tab">
-        <input type="radio" name="dispatch-mode" value="split-merge" />
-        <span>Dự án lớn: Chia 3 bàn &amp; Vy tổng hợp</span>
-      </label>
-      <label class="mode-tab">
-        <input type="radio" name="dispatch-mode" value="direct" />
-        <span>Chọn đích danh bàn</span>
-      </label>
+    <div class="dock-top-row">
+      <div class="mode-tabs" role="radiogroup" aria-label="Chế độ phân công">
+        <label class="mode-tab">
+          <input type="radio" name="dispatch-mode" value="auto-best" checked />
+          <span>Tự chọn người giỏi nhất</span>
+        </label>
+        <label class="mode-tab">
+          <input type="radio" name="dispatch-mode" value="split-merge" />
+          <span>Dự án lớn: Chia 3 bàn &amp; Vy tổng hợp</span>
+        </label>
+        <label class="mode-tab">
+          <input type="radio" name="dispatch-mode" value="direct" />
+          <span>Chọn đích danh bàn</span>
+        </label>
+      </div>
+
+      <!-- Quick NĐ30 Document Type Starters -->
+      <div class="template-chips" aria-label="Mẫu văn bản nhanh">
+        <button type="button" class="tpl-chip" data-tpl="Soạn Công văn về việc ">Công văn</button>
+        <button type="button" class="tpl-chip" data-tpl="Xây dựng Báo cáo kết quả công tác ">Báo cáo</button>
+        <button type="button" class="tpl-chip" data-tpl="Xây dựng Kế hoạch triển khai ">Kế hoạch</button>
+        <button type="button" class="tpl-chip" data-tpl="Soạn Tờ trình đề xuất phê duyệt ">Tờ trình</button>
+        <button type="button" class="tpl-chip" data-tpl="Dự thảo Quyết định về việc ">Quyết định</button>
+        <button type="button" class="tpl-chip" data-tpl="Soạn Thông báo về việc ">Thông báo</button>
+        <button type="button" class="tpl-chip" data-tpl="Rà soát, hiệu đính lại văn bản đính kèm theo đúng thể thức Nghị định 30/2020/NĐ-CP">Rà soát NĐ30</button>
+      </div>
+    </div>
+
+    <!-- Attached Reference File Pill (hidden unless file attached) -->
+    <div id="attached-bar" class="attached-bar hidden">
+      <span id="attached-name">Tài liệu đính kèm</span>
+      <button type="button" class="icon-btn-sm" id="btn-clear-attach" aria-label="Bỏ đính kèm">✕</button>
     </div>
 
     <form id="command-form" class="command-form">
+      <input type="file" id="file-attach-input" accept=".docx,.txt,.md" class="hidden" />
+      <button
+        type="button"
+        class="btn-attach"
+        id="btn-attach-file"
+        title="Đính kèm file .docx / .txt có sẵn để biên tập lại, rà soát NĐ30 hoặc tóm tắt"
+      >
+        + Tài liệu gốc
+      </button>
+
       <label class="sr-only" for="cmd-assignee">Chọn chuyên viên</label>
       <select id="cmd-assignee" class="cmd-select hidden" title="Chọn bàn nhận việc"></select>
 
@@ -147,15 +185,15 @@
         type="text"
         required
         minlength="3"
-        maxlength="400"
-        placeholder="VD: Soạn công văn đề xuất nâng cấp thiết bị, Lập đề án tổ chức hội nghị, Rà soát hợp đồng..."
+        maxlength="500"
+        placeholder="Nhập yêu cầu văn bản (hoặc chọn mẫu nhanh ở trên, đính kèm file gốc để biên tập lại)..."
       />
 
       <button type="submit" class="btn-primary cmd-submit" id="btn-cmd-submit">Giao việc</button>
     </form>
   </section>
 
-  <!-- Native Modal Dialog: Result Viewer (Copy + Word .doc + Markdown .md) -->
+  <!-- Native Modal Dialog: Result Viewer + Live NĐ30 Editor -->
   <dialog id="result-dialog" class="modal-dialog result-dialog" closedby="any" aria-labelledby="res-dialog-title">
     <div class="modal-head">
       <div>
@@ -163,10 +201,76 @@
         <h2 id="res-dialog-title">Văn bản hoàn chỉnh</h2>
         <p class="role-text" id="res-dialog-meta">—</p>
       </div>
-      <button type="button" class="icon-btn" id="btn-res-close" aria-label="Đóng cửa sổ kết quả">✕</button>
+      <div class="head-actions">
+        <button type="button" class="btn-outline" id="btn-toggle-edit">Chỉnh sửa nhanh</button>
+        <button type="button" class="icon-btn" id="btn-res-close" aria-label="Đóng cửa sổ kết quả">✕</button>
+      </div>
     </div>
 
+    <!-- Read View -->
     <div class="res-body" id="res-dialog-content"></div>
+
+    <!-- Live NĐ30 Structured Edit View -->
+    <form id="res-edit-form" class="res-edit-body hidden">
+      <div class="form-row">
+        <div class="form-field">
+          <label for="ed-cqcq">Cơ quan chủ quản cấp trên</label>
+          <input id="ed-cqcq" type="text" placeholder="VD: BỘ CÔNG AN / UBND TỈNH..." />
+        </div>
+        <div class="form-field">
+          <label for="ed-cqbh">Cơ quan / Đơn vị ban hành</label>
+          <input id="ed-cqbh" type="text" required />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-field">
+          <label for="ed-so">Số, ký hiệu văn bản</label>
+          <input id="ed-so" type="text" />
+        </div>
+        <div class="form-field">
+          <label for="ed-ngay">Địa danh, ngày tháng năm</label>
+          <input id="ed-ngay" type="text" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-field">
+          <label for="ed-loai">Mẫu trình bày</label>
+          <select id="ed-loai">
+            <option value="van_ban_co_ten_loai">Văn bản có tên loại (Báo cáo, Kế hoạch, Tờ trình, QĐ...)</option>
+            <option value="cong_van">Công văn hành chính (V/v...)</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label for="ed-tenloai">Tên loại văn bản (để trống nếu là Công văn)</label>
+          <input id="ed-tenloai" type="text" placeholder="VD: KẾ HOẠCH, BÁO CÁO..." />
+        </div>
+      </div>
+      <div class="form-field">
+        <label for="ed-trichyeu">Trích yếu nội dung</label>
+        <input id="ed-trichyeu" type="text" />
+      </div>
+      <div class="form-field">
+        <label for="ed-noidung">Nội dung chi tiết văn bản</label>
+        <textarea id="ed-noidung" rows="9"></textarea>
+      </div>
+      <div class="form-row">
+        <div class="form-field">
+          <label for="ed-chucvu">Chức vụ người ký</label>
+          <input id="ed-chucvu" type="text" />
+        </div>
+        <div class="form-field">
+          <label for="ed-nguoiky">Họ và tên người ký</label>
+          <input id="ed-nguoiky" type="text" />
+        </div>
+      </div>
+      <div class="form-field">
+        <label for="ed-noinhan">Nơi nhận (mỗi dòng 1 nơi nhận)</label>
+        <textarea id="ed-noinhan" rows="3"></textarea>
+      </div>
+      <div class="edit-save-bar">
+        <button type="submit" class="btn-primary">Lưu &amp; Cập nhật lại Word (.docx) + PDF</button>
+      </div>
+    </form>
 
     <div class="modal-foot">
       <span class="mono res-path" id="res-dialog-file">results/...</span>
@@ -178,66 +282,97 @@
     </div>
   </dialog>
 
-  <!-- Native Modal Dialog: Portable AI Settings (for any PC) -->
+  <!-- Native Modal Dialog: Unit Profile & Portable AI Settings -->
   <dialog id="settings-dialog" class="modal-dialog settings-dialog" closedby="any" aria-labelledby="set-title">
     <form id="settings-form">
       <div class="modal-head">
         <div>
-          <span class="desk-tag">CẤU HÌNH DI ĐỘNG</span>
-          <h2 id="set-title">Cài đặt nguồn AI</h2>
-          <p class="role-text">Dùng ngay trên mọi máy tính — không cần cài thêm thư viện.</p>
+          <span class="desk-tag">CẤU HÌNH ĐƠN VỊ &amp; AI</span>
+          <h2 id="set-title">Cài đặt Hồ sơ Đơn vị &amp; Nguồn AI</h2>
+          <p class="role-text">Điền sẵn tên đơn vị 1 lần để mọi file Word/PDF xuất ra đúng tiêu đề cơ quan.</p>
         </div>
         <button type="button" class="icon-btn" id="btn-set-close" aria-label="Đóng cài đặt">✕</button>
       </div>
 
       <div class="settings-body">
-        <div class="form-field">
-          <label for="cfg-provider">Nguồn AI ưu tiên</label>
-          <select id="cfg-provider">
-            <option value="auto">Tự động (Antigravity → Gemini → Ollama/OpenAI)</option>
-            <option value="antigravity">Antigravity đang chạy trên máy</option>
-            <option value="gemini">Google Gemini API (miễn phí tại aistudio.google.com)</option>
-            <option value="openai">Ollama nội bộ / OpenAI-compatible API</option>
-          </select>
+        <div class="section-subtitle">1. Thông tin Đơn vị mặc định trên văn bản (Nghị định 30)</div>
+        <div class="form-row">
+          <div class="form-field">
+            <label for="org-cqcq">Cơ quan chủ quản cấp trên</label>
+            <input id="org-cqcq" type="text" placeholder="VD: CÔNG AN TỈNH..." />
+          </div>
+          <div class="form-field">
+            <label for="org-cqbh">Tên cơ quan / đơn vị ban hành</label>
+            <input id="org-cqbh" type="text" placeholder="VD: PHÒNG THAM MƯU" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-field">
+            <label for="org-kh">Chữ viết tắt đơn vị (ký hiệu)</label>
+            <input id="org-kh" type="text" placeholder="VD: CAT-PV01" />
+          </div>
+          <div class="form-field">
+            <label for="org-diadanh">Địa danh hành chính</label>
+            <input id="org-diadanh" type="text" placeholder="VD: Hà Nội" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-field">
+            <label for="org-chucvu">Chức vụ ký mặc định</label>
+            <input id="org-chucvu" type="text" placeholder="VD: TRƯỞNG PHÒNG" />
+          </div>
+          <div class="form-field">
+            <label for="org-nguoiky">Họ tên người ký mặc định</label>
+            <input id="org-nguoiky" type="text" placeholder="Có thể để trống" />
+          </div>
         </div>
 
-        <div class="form-field">
-          <label for="cfg-agy-model">Model Antigravity (khi chạy Antigravity Live)</label>
-          <select id="cfg-agy-model">
-            <option value="pro">Pro / Neon Medium (Mạnh nhất — Khuyên dùng cho văn bản)</option>
-            <option value="flash">Flash (Nhanh, tiết kiệm)</option>
-          </select>
-        </div>
-
-        <div class="form-field">
-          <label for="cfg-gemini-key">Google Gemini API Key (để trống nếu giữ nguyên)</label>
-          <input id="cfg-gemini-key" type="password" placeholder="AIza..." autocomplete="off" />
-        </div>
-
-        <div class="form-field">
-          <label for="cfg-gemini-model">Model Gemini</label>
-          <input id="cfg-gemini-model" type="text" value="gemini-2.5-pro" />
-        </div>
-
-        <div class="form-field">
-          <label for="cfg-openai-url">Ollama / OpenAI Base URL</label>
-          <input id="cfg-openai-url" type="url" value="http://localhost:11434/v1" />
+        <div class="section-subtitle">2. Nguồn trí tuệ nhân tạo (AI Engine)</div>
+        <div class="form-row">
+          <div class="form-field">
+            <label for="cfg-provider">Nguồn AI ưu tiên</label>
+            <select id="cfg-provider">
+              <option value="auto">Tự động (Antigravity → Gemini → Ollama)</option>
+              <option value="antigravity">Antigravity đang chạy trên máy</option>
+              <option value="gemini">Google Gemini API</option>
+              <option value="openai">Ollama nội bộ / OpenAI API</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="cfg-agy-model">Model Antigravity</label>
+            <select id="cfg-agy-model">
+              <option value="pro">Pro / Neon Medium (Mạnh nhất — Khuyên dùng)</option>
+              <option value="flash">Flash (Nhanh)</option>
+            </select>
+          </div>
         </div>
 
         <div class="form-row">
           <div class="form-field">
-            <label for="cfg-openai-model">Model Ollama / OpenAI</label>
-            <input id="cfg-openai-model" type="text" value="qwen2.5:7b" />
+            <label for="cfg-gemini-key">Google Gemini API Key</label>
+            <input id="cfg-gemini-key" type="password" placeholder="AIza..." autocomplete="off" />
           </div>
           <div class="form-field">
-            <label for="cfg-openai-key">OpenAI Key (nếu có)</label>
-            <input id="cfg-openai-key" type="password" placeholder="sk-... (Ollama bỏ trống)" autocomplete="off" />
+            <label for="cfg-gemini-model">Model Gemini</label>
+            <input id="cfg-gemini-model" type="text" value="gemini-2.5-pro" />
           </div>
         </div>
 
+        <div class="form-row">
+          <div class="form-field">
+            <label for="cfg-openai-url">Ollama / OpenAI URL</label>
+            <input id="cfg-openai-url" type="url" value="http://localhost:11434/v1" />
+          </div>
+          <div class="form-field">
+            <label for="cfg-openai-model">Model Ollama / OpenAI</label>
+            <input id="cfg-openai-model" type="text" value="qwen2.5:7b" />
+          </div>
+        </div>
+        <input id="cfg-openai-key" type="hidden" value="" />
+
         <label class="checkbox-row">
           <input type="checkbox" id="cfg-archive-agy" checked />
-          <span>Tự động ẩn (archive) hội thoại Antigravity sau khi lưu xong kết quả để gọn sidebar</span>
+          <span>Tự động ẩn (archive) hội thoại phụ trên sidebar Antigravity sau khi lưu xong kết quả</span>
         </label>
       </div>
 

@@ -1,23 +1,25 @@
 """
-Trình xuất văn bản hành chính chuẩn Nghị định 30/2020/NĐ-CP (Phụ lục I & III)
+Trình xuất văn bản hành chính chuẩn Nghị định 30/2020/NĐ-CP (Phụ lục I, II & III)
 - Xuất file Word thật (.docx) bằng python-docx:
   * Khổ A4 (210x297mm), lề Trên 20mm, Dưới 20mm, Trái 30mm, Phải 15mm
-  * Phông chữ Times New Roman (Unicode), màu đen thuần
+  * Phông chữ Times New Roman (Unicode TCVN 6909:2001), màu đen thuần
+  * Đường kẻ ngang liền nét chuẩn in ấn (dùng w:pBdr thực, không dùng ký tự gạch giả)
   * Bảng 2 cột đầu trang (Tên cơ quan + Số/Ký hiệu | Quốc hiệu + Tiêu ngữ + Địa danh ngày tháng)
   * Số trang canh giữa lề trên (13pt), ẩn ở trang 1
   * Nội dung 14pt canh đều hai lề, lùi đầu dòng 1.27cm, cách đoạn 6pt, giãn dòng 1.15
-  * Hỗ trợ bảng biểu, đậm/nghiêng sạch (không lọt ký tự Markdown thô)
-  * Bảng 2 cột cuối trang (Nơi nhận 12pt/11pt | Chức vụ & Họ tên người ký 14pt)
-- Xuất trang HTML chuẩn A4 để In / Lưu PDF sắc nét (render_nd30_print_html).
+  * Bảng 2 cột cuối trang (Nơi nhận 12pt/11pt | Quyền hạn, Chức vụ & Họ tên người ký 14pt)
+- Đọc nội dung từ file .docx tham khảo (extract_docx_bytes) để rà soát / biên tập lại.
+- Xuất trang HTML A4 chuẩn NĐ30 để In / Lưu PDF sắc nét (render_nd30_print_html).
 """
 import html
+import io
 import json
 import re
 from datetime import datetime
 from pathlib import Path
 
 from docx import Document
-from docx.enum.table import WD_TABLE_ALIGNMENT, WD_ALIGN_VERTICAL
+from docx.enum.table import WD_ALIGN_VERTICAL, WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import nsdecls, qn
@@ -26,17 +28,61 @@ from docx.shared import Cm, Mm, Pt, RGBColor
 BLACK = RGBColor(0, 0, 0)
 
 
-def default_date_str() -> str:
+def default_date_str(place: str = "Hà Nội") -> str:
     now = datetime.now()
+    place_clean = (place or "Hà Nội").strip()
     d = f"{now.day:02d}" if now.day < 10 else str(now.day)
     m = f"{now.month:02d}" if now.month <= 2 else str(now.month)
-    return f"Hà Nội, ngày {d} tháng {m} năm {now.year}"
+    return f"{place_clean}, ngày {d} tháng {m} năm {now.year}"
 
 
-def normalize_doc_data(raw_text: str, fallback_title: str = "VĂN BẢN HÀNH CHÍNH") -> dict:
-    """Trích xuất JSON chuẩn NĐ30 từ phản hồi AI; nếu là Markdown thuần thì tự chuyển đổi sạch."""
+def extract_docx_bytes(raw_bytes: bytes) -> str:
+    """Đọc toàn bộ văn bản & bảng biểu từ file .docx người dùng tải lên."""
+    doc = Document(io.BytesIO(raw_bytes))
+    chunks = []
+    for p in doc.paragraphs:
+        t = p.text.strip()
+        if t:
+            chunks.append(t)
+    for tbl in doc.tables:
+        for row in tbl.rows:
+            cells = [c.text.strip().replace("\n", " ") for c in row.cells]
+            if any(cells):
+                chunks.append(" | ".join(cells))
+    return "\n".join(chunks).strip()
+
+
+def _is_placeholder(val: str) -> bool:
+    if not val:
+        return True
+    up = val.strip().upper()
+    placeholders = {
+        "ĐƠN VỊ BAN HÀNH",
+        "CƠ QUAN BAN HÀNH",
+        "TÊN CƠ QUAN BAN HÀNH",
+        "TÊN CƠ QUAN / ĐƠN VỊ BAN HÀNH",
+        "CƠ QUAN CHỦ QUẢN",
+        "TÊN CƠ QUAN CHỦ QUẢN",
+        "THỦ TRƯỞNG ĐƠN VỊ",
+    }
+    return up in placeholders
+
+
+def normalize_doc_data(
+    raw_text: str,
+    fallback_title: str = "VĂN BẢN HÀNH CHÍNH",
+    org_profile: dict | None = None,
+) -> dict:
+    """Trích xuất JSON chuẩn NĐ30 từ phản hồi AI; áp dụng cấu hình đơn vị mặc định nếu có."""
+    org = org_profile or {}
+    def_cqcq = (org.get("coQuanChuQuan") or "").strip()
+    def_cqbh = (org.get("coQuanBanHanh") or "ĐƠN VỊ BAN HÀNH").strip()
+    def_kh = (org.get("kyHieuDonVi") or "ĐV").strip()
+    def_place = (org.get("diaDanh") or "Hà Nội").strip()
+    def_cv = (org.get("chucVuKy") or "THỦ TRƯỞNG ĐƠN VỊ").strip()
+    def_nk = (org.get("nguoiKy") or "").strip()
+
     data = None
-    # Tìm khối ```json ... ```
     m = re.search(r"```json\s*(\{.*?\})\s*```", raw_text, flags=re.S)
     if m:
         try:
@@ -45,48 +91,67 @@ def normalize_doc_data(raw_text: str, fallback_title: str = "VĂN BẢN HÀNH CH
             data = None
     if data is None:
         stripped = raw_text.strip()
-        if stripped.startswith("{") and stripped.endswith("}"):
+        # Thử tìm cặp ngoặc nhọn ngoài cùng nếu có chữ thừa quanh JSON
+        j_start = stripped.find("{")
+        j_end = stripped.rfind("}")
+        if j_start != -1 and j_end > j_start:
             try:
-                data = json.loads(stripped)
+                cand = json.loads(stripped[j_start : j_end + 1])
+                if isinstance(cand, dict) and ("noi_dung" in cand or "trich_yeu" in cand):
+                    data = cand
             except Exception:
                 data = None
 
     if not isinstance(data, dict):
-        # Fallback: chuyển đổi văn bản Markdown sang cấu trúc NĐ30
         clean_md = re.sub(r"^```[a-zA-Z]*\n|\n```$", "", raw_text.strip())
         data = {
             "loai_van_ban": "van_ban_co_ten_loai",
-            "co_quan_chu_quan": "CƠ QUAN CHỦ QUẢN",
-            "co_quan_ban_hanh": "CƠ QUAN BAN HÀNH",
-            "so_ky_hieu": "Số: ....../VB-...",
-            "dia_danh_ngay": default_date_str(),
+            "co_quan_chu_quan": def_cqcq,
+            "co_quan_ban_hanh": def_cqbh,
+            "so_ky_hieu": f"Số: ....../VB-{def_kh}",
+            "dia_danh_ngay": default_date_str(def_place),
             "ten_loai": "VĂN BẢN",
             "trich_yeu": fallback_title,
             "kinh_gui": [],
             "can_cu": [],
             "noi_dung": clean_md,
             "quyen_han_ky": "",
-            "chuc_vu_ky": "THỦ TRƯỞNG ĐƠN VỊ",
-            "nguoi_ky": "",
-            "noi_nhan": ["- Như trên;", "- Lưu: VT."],
+            "chuc_vu_ky": def_cv,
+            "nguoi_ky": def_nk,
+            "noi_nhan": ["- Như trên;", f"- Lưu: VT, {def_kh}."],
         }
 
-    # Chuẩn hóa đầy đủ các trường bắt buộc
+    cqcq = (data.get("co_quan_chu_quan") or "").strip()
+    if _is_placeholder(cqcq) and def_cqcq:
+        cqcq = def_cqcq
+
+    cqbh = (data.get("co_quan_ban_hanh") or "").strip()
+    if _is_placeholder(cqbh):
+        cqbh = def_cqbh
+
+    cv_ky = (data.get("chuc_vu_ky") or "").strip()
+    if _is_placeholder(cv_ky):
+        cv_ky = def_cv
+
+    ng_ky = (data.get("nguoi_ky") or "").strip() or def_nk
+
     out = {
         "loai_van_ban": data.get("loai_van_ban") or "van_ban_co_ten_loai",
-        "co_quan_chu_quan": (data.get("co_quan_chu_quan") or "").strip(),
-        "co_quan_ban_hanh": (data.get("co_quan_ban_hanh") or "ĐƠN VỊ BAN HÀNH").strip(),
-        "so_ky_hieu": (data.get("so_ky_hieu") or "Số: ....../...").strip(),
-        "dia_danh_ngay": (data.get("dia_danh_ngay") or default_date_str()).strip(),
+        "co_quan_chu_quan": cqcq,
+        "co_quan_ban_hanh": cqbh,
+        "so_ky_hieu": (data.get("so_ky_hieu") or f"Số: ....../{def_kh}").strip(),
+        "dia_danh_ngay": (data.get("dia_danh_ngay") or default_date_str(def_place)).strip(),
         "ten_loai": (data.get("ten_loai") or "").strip(),
         "trich_yeu": (data.get("trich_yeu") or fallback_title).strip(),
         "kinh_gui": data.get("kinh_gui") if isinstance(data.get("kinh_gui"), list) else [],
         "can_cu": data.get("can_cu") if isinstance(data.get("can_cu"), list) else [],
         "noi_dung": (data.get("noi_dung") or "").strip(),
         "quyen_han_ky": (data.get("quyen_han_ky") or "").strip(),
-        "chuc_vu_ky": (data.get("chuc_vu_ky") or "THỦ TRƯỞNG ĐƠN VỊ").strip(),
-        "nguoi_ky": (data.get("nguoi_ky") or "").strip(),
-        "noi_nhan": data.get("noi_nhan") if isinstance(data.get("noi_nhan"), list) and data.get("noi_nhan") else ["- Như trên;", "- Lưu: VT."],
+        "chuc_vu_ky": cv_ky,
+        "nguoi_ky": ng_ky,
+        "noi_nhan": data.get("noi_nhan")
+        if isinstance(data.get("noi_nhan"), list) and data.get("noi_nhan")
+        else ["- Như trên;", f"- Lưu: VT, {def_kh}."],
     }
     if not out["so_ky_hieu"].lower().startswith("số:"):
         out["so_ky_hieu"] = "Số: " + out["so_ky_hieu"]
@@ -98,11 +163,14 @@ def doc_data_to_markdown(d: dict) -> str:
     lines = []
     if d["co_quan_chu_quan"]:
         lines.append(f"**{d['co_quan_chu_quan'].upper()}**")
-    lines.append(f"**{d['co_quan_ban_hanh'].upper()}** | **CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM** — *Độc lập - Tự do - Hạnh phúc*")
+    lines.append(
+        f"**{d['co_quan_ban_hanh'].upper()}** — **CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM** (*Độc lập - Tự do - Hạnh phúc*)"
+    )
     lines.append(f"{d['so_ky_hieu']} | *{d['dia_danh_ngay']}*")
     lines.append("")
     if d["loai_van_ban"] == "cong_van":
-        lines.append(f"**V/v {d['trich_yeu']}**")
+        vv = d["trich_yeu"]
+        lines.append(f"**{vv if vv.lower().startswith('v/v') else 'V/v ' + vv}**")
     else:
         if d["ten_loai"]:
             lines.append(f"# {d['ten_loai'].upper()}")
@@ -111,9 +179,9 @@ def doc_data_to_markdown(d: dict) -> str:
     lines.append("")
     if d["kinh_gui"]:
         if len(d["kinh_gui"]) == 1:
-            lines.append(f"Kính gửi: {d['kinh_gui'][0]}")
+            lines.append(f"**Kính gửi:** {d['kinh_gui'][0].lstrip('- ').strip()}")
         else:
-            lines.append("Kính gửi:")
+            lines.append("**Kính gửi:**")
             for item in d["kinh_gui"]:
                 lines.append(f"- {item.lstrip('- ').strip()}")
         lines.append("")
@@ -132,7 +200,7 @@ def doc_data_to_markdown(d: dict) -> str:
     lines.append("")
     lines.append("*Nơi nhận:*")
     for nn in d["noi_nhan"]:
-        lines.append(nn if nn.strip().startswith("-") else f"- {nn.strip()}")
+        lines.append(nn if str(nn).strip().startswith("-") else f"- {str(nn).strip()}")
     return "\n".join(lines)
 
 
@@ -185,6 +253,25 @@ def set_table_thin_borders(table):
     tblPr.append(borders)
 
 
+def add_solid_rule(container, indent_cm: float, space_after_pt: float = 4):
+    """Đường kẻ ngang nét liền chuẩn NĐ30 bằng border thật của Word (không bị đứt nét)."""
+    p = container.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.paragraph_format.left_indent = Cm(indent_cm)
+    p.paragraph_format.right_indent = Cm(indent_cm)
+    p.paragraph_format.space_before = Pt(1)
+    p.paragraph_format.space_after = Pt(space_after_pt)
+    p.paragraph_format.line_spacing = Pt(3)
+    pPr = p._p.get_or_add_pPr()
+    pBdr = parse_xml(
+        f'<w:pBdr {nsdecls("w")}>'
+        '<w:bottom w:val="single" w:sz="6" w:space="1" w:color="000000"/>'
+        "</w:pBdr>"
+    )
+    pPr.append(pBdr)
+    return p
+
+
 def add_page_number_field(paragraph):
     run = paragraph.add_run()
     set_run_font(run, size_pt=13, bold=False, italic=False)
@@ -204,7 +291,6 @@ def add_page_number_field(paragraph):
 
 
 def add_formatted_runs(p, text: str, size_pt=14, default_bold=False, default_italic=False):
-    """Tách inline **bold** và *italic* để không lọt ký tự Markdown vào Word."""
     tokens = re.split(r"(\*\*.*?\*\*|\*[^*]+\*)", text)
     for tok in tokens:
         if not tok:
@@ -220,24 +306,12 @@ def add_formatted_runs(p, text: str, size_pt=14, default_bold=False, default_ita
             set_run_font(r, size_pt=size_pt, bold=default_bold, italic=default_italic)
 
 
-def add_short_rule(container, chars="──────────────", size_pt=10, space_after=4):
-    p = container.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p.paragraph_format.space_before = Pt(0)
-    p.paragraph_format.space_after = Pt(space_after)
-    p.paragraph_format.line_spacing = 1.0
-    r = p.add_run(chars)
-    set_run_font(r, size_pt=size_pt, bold=False)
-    return p
-
-
 # ============================================================
 # XUẤT FILE WORD .DOCX THẬT CHUẨN NGHỊ ĐỊNH 30/2020/NĐ-CP
 # ============================================================
 def build_docx(doc_data: dict, out_path: Path):
     doc = Document()
     sec = doc.sections[0]
-    # Khổ giấy A4 (210mm x 297mm) & định lề chuẩn NĐ30: Trên 20, Dưới 20, Trái 30, Phải 15
     sec.page_width = Mm(210)
     sec.page_height = Mm(297)
     sec.top_margin = Mm(20)
@@ -245,20 +319,18 @@ def build_docx(doc_data: dict, out_path: Path):
     sec.left_margin = Mm(30)
     sec.right_margin = Mm(15)
 
-    # Số trang canh giữa lề trên, 13pt, ẩn trang 1 (Phụ lục I Mục I.7)
     sec.different_first_page_header_footer = True
     sec.header_distance = Mm(10)
     hp = sec.header.paragraphs[0]
     hp.alignment = WD_ALIGN_PARAGRAPH.CENTER
     add_page_number_field(hp)
 
-    # Style mặc định
     normal = doc.styles["Normal"]
     normal.font.name = "Times New Roman"
     normal.font.size = Pt(14)
     normal.font.color.rgb = BLACK
 
-    # 1. BẢNG 2 CỘT PHẦN ĐẦU TRANG (Ô 1, 2, 3, 4, 5b)
+    # 1. BẢNG 2 CỘT ĐẦU TRANG
     hdr_tbl = doc.add_table(rows=2, cols=2)
     hdr_tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
     hdr_tbl.autofit = False
@@ -269,38 +341,38 @@ def build_docx(doc_data: dict, out_path: Path):
             row.cells[i].width = w
             row.cells[i].vertical_alignment = WD_ALIGN_VERTICAL.TOP
 
-    # Ô trái hàng 1: Tên CQ chủ quản + Tên CQ ban hành + gạch ngang
+    # Ô trái hàng 1: Cơ quan chủ quản + Cơ quan ban hành + đường kẻ liền 1/3-1/2
     c_org = hdr_tbl.cell(0, 0)
     p_org = c_org.paragraphs[0]
     p_org.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p_org.paragraph_format.space_before = Pt(0)
-    p_org.paragraph_format.space_after = Pt(0)
-    p_org.paragraph_format.line_spacing = 1.05
+    p_org.paragraph_format.space_after = Pt(1)
+    p_org.paragraph_format.line_spacing = 1.08
     if doc_data["co_quan_chu_quan"]:
         r = p_org.add_run(doc_data["co_quan_chu_quan"].upper() + "\n")
         set_run_font(r, size_pt=12, bold=False)
     r_bh = p_org.add_run(doc_data["co_quan_ban_hanh"].upper())
     set_run_font(r_bh, size_pt=12, bold=True)
-    add_short_rule(c_org, "──────────", size_pt=9, space_after=2)
+    add_solid_rule(c_org, indent_cm=2.0, space_after_pt=2)
 
-    # Ô phải hàng 1: Quốc hiệu + Tiêu ngữ + gạch ngang
+    # Ô phải hàng 1: Quốc hiệu + Tiêu ngữ + đường kẻ liền bằng độ dài tiêu ngữ
     c_qh = hdr_tbl.cell(0, 1)
     p_qh = c_qh.paragraphs[0]
     p_qh.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p_qh.paragraph_format.space_before = Pt(0)
-    p_qh.paragraph_format.space_after = Pt(0)
-    p_qh.paragraph_format.line_spacing = 1.05
+    p_qh.paragraph_format.space_after = Pt(1)
+    p_qh.paragraph_format.line_spacing = 1.08
     r1 = p_qh.add_run("CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM\n")
     set_run_font(r1, size_pt=12, bold=True)
     r2 = p_qh.add_run("Độc lập - Tự do - Hạnh phúc")
     set_run_font(r2, size_pt=13, bold=True)
-    add_short_rule(c_qh, "────────────────────", size_pt=9, space_after=2)
+    add_solid_rule(c_qh, indent_cm=1.85, space_after_pt=2)
 
     # Ô trái hàng 2: Số, ký hiệu (+ V/v nếu là công văn)
     c_so = hdr_tbl.cell(1, 0)
     p_so = c_so.paragraphs[0]
     p_so.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p_so.paragraph_format.space_before = Pt(4)
+    p_so.paragraph_format.space_before = Pt(3)
     p_so.paragraph_format.space_after = Pt(0)
     r_so = p_so.add_run(doc_data["so_ky_hieu"])
     set_run_font(r_so, size_pt=13, bold=False)
@@ -316,16 +388,16 @@ def build_docx(doc_data: dict, out_path: Path):
         r_vv = p_vv.add_run(vv_txt)
         set_run_font(r_vv, size_pt=12, bold=False)
 
-    # Ô phải hàng 2: Địa danh, ngày tháng năm (13pt nghiêng)
+    # Ô phải hàng 2: Địa danh, ngày tháng năm
     c_dt = hdr_tbl.cell(1, 1)
     p_dt = c_dt.paragraphs[0]
     p_dt.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p_dt.paragraph_format.space_before = Pt(4)
+    p_dt.paragraph_format.space_before = Pt(3)
     p_dt.paragraph_format.space_after = Pt(0)
     r_dt = p_dt.add_run(doc_data["dia_danh_ngay"])
     set_run_font(r_dt, size_pt=13, italic=True)
 
-    # 2. TÊN LOẠI & TRÍCH YẾU (Ô 5a — nếu không phải Công văn)
+    # 2. TÊN LOẠI & TRÍCH YẾU
     if doc_data["loai_van_ban"] != "cong_van":
         if doc_data["ten_loai"]:
             p_tl = doc.add_paragraph()
@@ -341,14 +413,14 @@ def build_docx(doc_data: dict, out_path: Path):
             p_ty.paragraph_format.space_after = Pt(2)
             r_ty = p_ty.add_run(doc_data["trich_yeu"])
             set_run_font(r_ty, size_pt=14, bold=True)
-        add_short_rule(doc, "──────────────", size_pt=10, space_after=10)
+        add_solid_rule(doc, indent_cm=5.8, space_after_pt=10)
     else:
         sp = doc.add_paragraph()
         sp.paragraph_format.space_before = Pt(6)
         sp.paragraph_format.space_after = Pt(4)
 
-    # 3. KÍNH GỬI (Ô 9a)
-    kinh_gui = [k.strip() for k in doc_data["kinh_gui"] if str(k).strip()]
+    # 3. KÍNH GỬI
+    kinh_gui = [str(k).strip() for k in doc_data["kinh_gui"] if str(k).strip()]
     if kinh_gui:
         if len(kinh_gui) == 1:
             p_kg = doc.add_paragraph()
@@ -373,7 +445,7 @@ def build_docx(doc_data: dict, out_path: Path):
                 r_i = p_kgi.add_run(f"- {clean_item}")
                 set_run_font(r_i, size_pt=14)
 
-    # 4. CĂN CỨ BAN HÀNH (14pt nghiêng, lùi 1.27cm)
+    # 4. CĂN CỨ BAN HÀNH
     for idx, cc in enumerate(doc_data["can_cu"]):
         cc_str = str(cc).strip()
         if not cc_str:
@@ -387,7 +459,7 @@ def build_docx(doc_data: dict, out_path: Path):
         r_cc = p_cc.add_run(cc_str)
         set_run_font(r_cc, size_pt=14, italic=True)
 
-    # 5. NỘI DUNG VĂN BẢN (Ô 6 — 14pt, canh đều, lùi 1.27cm, cách đoạn 6pt, hỗ trợ bảng)
+    # 5. NỘI DUNG VĂN BẢN
     lines = doc_data["noi_dung"].splitlines()
     i = 0
     last_body_p = None
@@ -398,7 +470,6 @@ def build_docx(doc_data: dict, out_path: Path):
             i += 1
             continue
 
-        # Bảng Markdown -> Bảng Word có viền mảnh đen
         if stripped.startswith("|") and "|" in stripped[1:]:
             tbl_lines = []
             while i < len(lines) and lines[i].strip().startswith("|"):
@@ -424,9 +495,9 @@ def build_docx(doc_data: dict, out_path: Path):
                         p.paragraph_format.space_before = Pt(3)
                         p.paragraph_format.space_after = Pt(3)
                         add_formatted_runs(p, val, size_pt=13, default_bold=(r_idx == 0))
+            last_body_p = None
             continue
 
-        # Tiêu đề Markdown (# / ## / ###) hoặc Chương / Phần / Mục
         hm = re.match(r"^(#{1,3})\s+(.*)$", stripped)
         if hm:
             lvl = len(hm.group(1))
@@ -448,7 +519,6 @@ def build_docx(doc_data: dict, out_path: Path):
             i += 1
             continue
 
-        # Gạch đầu dòng (- / * / +)
         bm = re.match(r"^[-*+]\s+(.*)$", stripped)
         if bm:
             p = doc.add_paragraph()
@@ -462,7 +532,6 @@ def build_docx(doc_data: dict, out_path: Path):
             i += 1
             continue
 
-        # Đoạn văn bình thường (hoặc Điều X. / I. / 1. ...)
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         p.paragraph_format.first_line_indent = Cm(1.27)
@@ -470,9 +539,8 @@ def build_docx(doc_data: dict, out_path: Path):
         p.paragraph_format.space_after = Pt(6)
         p.paragraph_format.line_spacing = 1.15
 
-        # Kiểm tra nếu dòng bắt đầu bằng "Điều 1." thì in đậm tên Điều
-        dm = re.match(r"^(Điều\s+\d+\.[^\n]*)$", stripped)
-        if dm and len(stripped) < 95:
+        dm = re.match(r"^((?:Điều\s+\d+\.|[IVX]+\.)\s+[^\n:]{1,85})$", stripped)
+        if dm:
             r = p.add_run(stripped)
             set_run_font(r, size_pt=14, bold=True)
         else:
@@ -480,16 +548,14 @@ def build_docx(doc_data: dict, out_path: Path):
         last_body_p = p
         i += 1
 
-    # Kết thúc văn bản bằng "./." theo chuẩn NĐ30 nếu chưa có
-    if last_body_p is not None and not last_body_p.text.strip().endswith("./."):
-        txt = last_body_p.text.rstrip()
-        if txt.endswith("."):
-            r_end = last_body_p.add_run("/.")
-        else:
-            r_end = last_body_p.add_run("./.")
-        set_run_font(r_end, size_pt=14)
+    if last_body_p is not None:
+        tail = last_body_p.text.rstrip()
+        if not tail.endswith("./."):
+            suffix = "/." if tail.endswith(".") else "./."
+            r_end = last_body_p.add_run(suffix)
+            set_run_font(r_end, size_pt=14)
 
-    # 6. BẢNG 2 CỘT CUỐI TRANG: NƠI NHẬN (Ô 9b) & CHỨC VỤ/CHỮ KÝ (Ô 7a, 7b)
+    # 6. BẢNG 2 CỘT CUỐI TRANG
     sp_end = doc.add_paragraph()
     sp_end.paragraph_format.space_before = Pt(8)
     sp_end.paragraph_format.space_after = Pt(4)
@@ -506,7 +572,6 @@ def build_docx(doc_data: dict, out_path: Path):
         row.cells[idx].width = w
         row.cells[idx].vertical_alignment = WD_ALIGN_VERTICAL.TOP
 
-    # Cột trái: Nơi nhận (12pt nghiêng đậm) + danh sách (11pt đứng)
     c_nn = row.cells[0]
     p_nn_hdr = c_nn.paragraphs[0]
     p_nn_hdr.paragraph_format.space_before = Pt(0)
@@ -526,7 +591,6 @@ def build_docx(doc_data: dict, out_path: Path):
         r_ni = p_ni.add_run(item_s)
         set_run_font(r_ni, size_pt=11, bold=False)
 
-    # Cột phải: Quyền hạn & Chức vụ ký (14pt IN HOA đậm) + khoảng trống ký + Họ tên (14pt đậm)
     c_ky = row.cells[1]
     p_ky = c_ky.paragraphs[0]
     p_ky.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -539,7 +603,6 @@ def build_docx(doc_data: dict, out_path: Path):
     r_cv = p_ky.add_run(doc_data["chuc_vu_ky"].upper())
     set_run_font(r_cv, size_pt=14, bold=True)
 
-    # Khoảng trống ký & đóng dấu (4 dòng)
     for _ in range(4):
         p_sp = c_ky.add_paragraph()
         p_sp.paragraph_format.space_before = Pt(0)
@@ -607,18 +670,23 @@ def render_nd30_print_html(doc_data: dict) -> str:
         body_html.append(f'<p class="nd-p">{_inline_html(s)}</p>')
         i += 1
 
-    if body_html and not body_html[-1].rstrip("</p>").endswith("./."):
-        body_html[-1] = body_html[-1][:-4] + "./.</p>"
+    if body_html and body_html[-1].endswith("</p>"):
+        inner = body_html[-1][:-4].rstrip()
+        if not inner.endswith("./."):
+            suffix = "/." if inner.endswith(".") else "./."
+            body_html[-1] = inner + suffix + "</p>"
 
     kg_html = ""
-    kg = [k.strip() for k in doc_data["kinh_gui"] if str(k).strip()]
+    kg = [str(k).strip() for k in doc_data["kinh_gui"] if str(k).strip()]
     if len(kg) == 1:
         kg_html = f'<p class="nd-kg-single">Kính gửi: {html.escape(kg[0].lstrip("- ").strip())}</p>'
     elif len(kg) > 1:
         items = "".join(f'<div>- {html.escape(k.lstrip("- ").strip())}</div>' for k in kg)
         kg_html = f'<div class="nd-kg-multi"><div>Kính gửi:</div><div class="nd-kg-list">{items}</div></div>'
 
-    cc_html = "".join(f'<p class="nd-cc">{html.escape(str(c).strip())}</p>' for c in doc_data["can_cu"] if str(c).strip())
+    cc_html = "".join(
+        f'<p class="nd-cc">{html.escape(str(c).strip())}</p>' for c in doc_data["can_cu"] if str(c).strip()
+    )
     nn_html = "".join(
         f'<div>{html.escape(str(n).strip() if str(n).strip().startswith("-") else "- " + str(n).strip())}</div>'
         for n in doc_data["noi_nhan"]
@@ -637,7 +705,11 @@ def render_nd30_print_html(doc_data: dict) -> str:
         ty = f'<div class="nd-trichyeu">{html.escape(doc_data["trich_yeu"])}</div>' if doc_data["trich_yeu"] else ""
         title_block = f'<div class="nd-title-wrap">{tl}{ty}<div class="nd-rule-mid"></div></div>'
 
-    cq_cq = f'<div class="nd-cqcq">{html.escape(doc_data["co_quan_chu_quan"].upper())}</div>' if doc_data["co_quan_chu_quan"] else ""
+    cq_cq = (
+        f'<div class="nd-cqcq">{html.escape(doc_data["co_quan_chu_quan"].upper())}</div>'
+        if doc_data["co_quan_chu_quan"]
+        else ""
+    )
     qh_ky = f'<div>{html.escape(doc_data["quyen_han_ky"].upper())}</div>' if doc_data["quyen_han_ky"] else ""
 
     return f"""<!DOCTYPE html>
@@ -680,7 +752,7 @@ def render_nd30_print_html(doc_data: dict) -> str:
   .nd-qh {{ font-size: 12pt; font-weight: bold; }}
   .nd-tn {{ font-size: 13pt; font-weight: bold; }}
   .nd-rule-sm {{ width: 42%; border-bottom: 1px solid #000; margin: 3pt auto 5pt; }}
-  .nd-rule-lg {{ width: 72%; border-bottom: 1px solid #000; margin: 3pt auto 5pt; }}
+  .nd-rule-lg {{ width: 68%; border-bottom: 1px solid #000; margin: 3pt auto 5pt; }}
   .nd-rule-mid {{ width: 32%; border-bottom: 1px solid #000; margin: 4pt auto 12pt; }}
   .nd-so {{ font-size: 13pt; margin-top: 2pt; }}
   .nd-vv {{ font-size: 12pt; margin-top: 6pt; }}
@@ -711,7 +783,7 @@ def render_nd30_print_html(doc_data: dict) -> str:
 </head>
 <body>
   <div class="toolbar">
-    <span>Bản xem trước khổ A4 chuẩn Nghị định 30/2020/NĐ-CP (Times New Roman 14pt, lề 20/20/30/15mm)</span>
+    <span>Xem trước trang A4 chuẩn Nghị định 30/2020/NĐ-CP (Times New Roman 14pt, lề 20/20/30/15mm)</span>
     <button onclick="window.print()">In / Lưu PDF ngay</button>
   </div>
   <div class="page">
