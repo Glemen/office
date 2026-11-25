@@ -10,6 +10,8 @@ Không gian văn phòng 3D **Agent Chibi** được dựng bằng Blender, tích
 ## Tính năng nổi bật (Bản Chốt Đơn)
 - **Chuẩn Nghị định 30/2020/NĐ-CP 100%**: Khổ A4, lề Trên 20mm / Dưới 20mm / Trái 30mm / Phải 15mm, phông Times New Roman, bảng tiêu đề 2 cột có đường kẻ liền nét thật, đánh số trang canh giữa lề trên (ẩn trang 1), nội dung 14pt lùi đầu dòng 1.27cm, kết thúc `./.`, bảng Nơi nhận & Chữ ký chuẩn.
 - **Lưu sẵn Hồ sơ Đơn vị**: Khai báo 1 lần Tên cơ quan chủ quản, Đơn vị ban hành, Chữ viết tắt, Địa danh, Chức vụ & Người ký trong mục **Cài đặt**.
+- **Gửi Hình Ảnh như chat AI thực thụ**: Bấm nút **Ảnh**, kéo thả, hoặc bấm **`Ctrl+V` dán thẳng ảnh chụp màn hình / ảnh chụp công văn giấy / bảng biểu** vào ô chat để chuyên viên đọc ảnh và soạn nội dung theo yêu cầu.
+- **Chế độ Thư mục làm việc (ngang chức nghiệp Antigravity)**: Bấm nút **Thư mục** trên ô chat để chọn bất kỳ thư mục nào trên máy — chuyên viên AI sẽ đọc tài liệu, tạo/sửa file/code và tự xuất văn bản `.docx` trực tiếp ngay bên trong thư mục đó (không đụng tới thư mục ngoài).
 - **Đính kèm tài liệu gốc (`.docx`, `.txt`, `.md`)**: Tải văn bản thô có sẵn lên để giao chuyên viên hiệu đính thể thức NĐ30, tóm tắt hoặc chuyển thể thành Báo cáo/Tờ trình.
 - **Chỉnh sửa nhanh ngay trên Web**: Sửa trực tiếp Số ký hiệu, Trích yếu, Nội dung, Nơi nhận... và bấm **Lưu** để cập nhật lại ngay file `.docx` & bản in PDF.
 - **3 chế độ điều phối**: *Tự chọn người giỏi nhất* • *Dự án lớn: Chia 3 bàn & Vy tổng hợp* • *Chọn đích danh bàn*.

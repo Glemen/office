@@ -307,6 +307,8 @@ let allResults = [];
 let currentDialogData = null;
 let isEditingResult = false;
 let attachedReferenceText = '';
+let attachedImages = []; // [{ name, mimeType, dataBase64, previewUrl }]
+let activeWorkspaceDir = localStorage.getItem('studio_workspace_dir') || '';
 let pipelineInfo = { active: false, phase: 'idle', message: 'Sẵn sàng nhận lệnh' };
 
 const elSummary = document.getElementById('office-summary');
@@ -339,6 +341,14 @@ const elInspAssignInput = document.getElementById('insp-assign-input');
 const elInspDoneCount = document.getElementById('insp-done-count');
 const elInspHistory = document.getElementById('insp-history');
 
+const elCommandDock = document.querySelector('.command-dock');
+const elContextStrip = document.getElementById('context-strip');
+const elWorkspacePill = document.getElementById('workspace-pill');
+const elWorkspaceLabel = document.getElementById('workspace-label');
+const btnPickFolder = document.getElementById('btn-pick-folder');
+const elImageInput = document.getElementById('image-attach-input');
+const elImageThumbs = document.getElementById('image-thumbs');
+
 const elCmdForm = document.getElementById('command-form');
 const elCmdAssignee = document.getElementById('cmd-assignee');
 const elCmdInput = document.getElementById('cmd-input');
@@ -355,6 +365,7 @@ const elResContent = document.getElementById('res-dialog-content');
 const elResEditForm = document.getElementById('res-edit-form');
 const btnToggleEdit = document.getElementById('btn-toggle-edit');
 const elResFile = document.getElementById('res-dialog-file');
+const btnResOpenWs = document.getElementById('btn-res-open-ws');
 const btnResDocx = document.getElementById('btn-res-docx');
 const btnResPdf = document.getElementById('btn-res-pdf');
 
@@ -382,16 +393,167 @@ document.querySelectorAll('.tpl-chip').forEach((chip) => {
   });
 });
 
-// Đính kèm file gốc (.docx / .txt / .md)
-document.getElementById('btn-attach-file').addEventListener('click', () => elFileInput.click());
-elFileInput.addEventListener('change', async () => {
-  const file = elFileInput.files && elFileInput.files[0];
-  if (!file) return;
+// Quản lý dải Context (Thư mục + Ảnh + Tài liệu gốc)
+function refreshContextStrip() {
+  const hasWs = Boolean(activeWorkspaceDir);
+  const hasDoc = Boolean(attachedReferenceText);
+  const hasImgs = attachedImages.length > 0;
+
+  elContextStrip.classList.toggle('hidden', !(hasWs || hasDoc || hasImgs));
+  elWorkspacePill.classList.toggle('hidden', !hasWs);
+  btnPickFolder.classList.toggle('active-ws', hasWs);
+  if (hasWs) {
+    const shortPath = activeWorkspaceDir.length > 42
+      ? '...' + activeWorkspaceDir.slice(-40)
+      : activeWorkspaceDir;
+    elWorkspaceLabel.textContent = `Thư mục: ${shortPath}`;
+    elWorkspaceLabel.title = activeWorkspaceDir;
+  }
+
+  elAttachedBar.classList.toggle('hidden', !hasDoc);
+
+  elImageThumbs.innerHTML = '';
+  attachedImages.forEach((img, idx) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'img-thumb';
+    wrap.innerHTML = `<img src="${img.previewUrl}" alt="${img.name}" /><button type="button" aria-label="Xóa ảnh">✕</button>`;
+    wrap.querySelector('button').addEventListener('click', () => {
+      URL.revokeObjectURL(img.previewUrl);
+      attachedImages.splice(idx, 1);
+      refreshContextStrip();
+    });
+    elImageThumbs.appendChild(wrap);
+  });
+}
+
+async function addImageFiles(fileList) {
+  for (const file of fileList) {
+    if (!file.type.startsWith('image/')) continue;
+    if (attachedImages.length >= 6) {
+      showToast('Tối đa 6 ảnh mỗi lần gửi!');
+      break;
+    }
+    const buf = await file.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let binary = '';
+    const chunkSize = 8192;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+    }
+    attachedImages.push({
+      name: file.name || `image_${Date.now()}.png`,
+      mimeType: file.type || 'image/png',
+      dataBase64: btoa(binary),
+      previewUrl: URL.createObjectURL(file),
+    });
+  }
+  refreshContextStrip();
+  elCmdInput.focus();
+}
+
+// 1. Nút Chọn Ảnh + Dán ảnh Ctrl+V + Kéo thả ảnh
+document.getElementById('btn-attach-image').addEventListener('click', () => elImageInput.click());
+elImageInput.addEventListener('change', async () => {
+  if (elImageInput.files && elImageInput.files.length > 0) {
+    await addImageFiles(elImageInput.files);
+    elImageInput.value = '';
+  }
+});
+
+elCmdInput.addEventListener('paste', async (e) => {
+  const items = e.clipboardData && e.clipboardData.items;
+  if (!items) return;
+  const imgFiles = [];
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      const f = item.getAsFile();
+      if (f) imgFiles.push(f);
+    }
+  }
+  if (imgFiles.length > 0) {
+    e.preventDefault();
+    await addImageFiles(imgFiles);
+    showToast(`Đã dán ${imgFiles.length} hình ảnh vào ô chat!`);
+  }
+});
+
+// Nhấn Enter để gửi, Shift+Enter để xuống dòng giống chat AI thực thụ
+elCmdInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    elCmdForm.requestSubmit();
+  }
+});
+
+// Kéo thả file ảnh hoặc .docx/.txt vào thanh chat
+elCommandDock.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  elCommandDock.classList.add('drag-over');
+});
+elCommandDock.addEventListener('dragleave', () => elCommandDock.classList.remove('drag-over'));
+elCommandDock.addEventListener('drop', async (e) => {
+  e.preventDefault();
+  elCommandDock.classList.remove('drag-over');
+  const files = e.dataTransfer && e.dataTransfer.files;
+  if (!files || files.length === 0) return;
+  const imgs = [...files].filter((f) => f.type.startsWith('image/'));
+  const docs = [...files].filter((f) => /\.(docx|txt|md)$/i.test(f.name));
+  if (imgs.length > 0) await addImageFiles(imgs);
+  if (docs.length > 0) await attachDocFile(docs[0]);
+});
+
+// 2. Chọn Thư mục làm việc (Workspace Folder Mode ngang Antigravity)
+btnPickFolder.addEventListener('click', async () => {
+  btnPickFolder.disabled = true;
+  btnPickFolder.textContent = 'Đang mở...';
+  try {
+    const resp = await fetch('/api/pick-folder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    const data = await resp.json();
+    if (data.ok && data.path) {
+      activeWorkspaceDir = data.path;
+      localStorage.setItem('studio_workspace_dir', activeWorkspaceDir);
+      refreshContextStrip();
+      showToast(`Đã chọn thư mục làm việc: ${data.path} (${data.itemCount} mục)`);
+      elCmdInput.focus();
+    }
+  } catch (err) {
+    showToast(`Lỗi chọn thư mục: ${err.message}`);
+  } finally {
+    btnPickFolder.disabled = false;
+    btnPickFolder.textContent = 'Thư mục';
+  }
+});
+
+async function openFolderInExplorer(pathStr) {
+  if (!pathStr) return;
+  await fetch('/api/open-folder', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path: pathStr }),
+  });
+}
+
+document.getElementById('btn-open-ws-explorer').addEventListener('click', () => openFolderInExplorer(activeWorkspaceDir));
+document.getElementById('btn-clear-ws').addEventListener('click', () => {
+  activeWorkspaceDir = '';
+  localStorage.removeItem('studio_workspace_dir');
+  refreshContextStrip();
+});
+
+// 3. Đính kèm file văn bản gốc (.docx / .txt / .md)
+async function attachDocFile(file) {
   try {
     const buf = await file.arrayBuffer();
     const bytes = new Uint8Array(buf);
     let binary = '';
-    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    const chunkSize = 8192;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+    }
     const resp = await fetch('/api/extract-file', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -400,23 +562,30 @@ elFileInput.addEventListener('change', async () => {
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || 'Lỗi đọc file');
     attachedReferenceText = data.text || '';
-    elAttachedName.textContent = `Đính kèm: ${file.name} (${attachedReferenceText.length} ký tự)`;
-    elAttachedBar.classList.remove('hidden');
+    elAttachedName.textContent = `Tài liệu: ${file.name} (${attachedReferenceText.length} ký tự)`;
+    refreshContextStrip();
     if (!elCmdInput.value.trim()) {
       elCmdInput.value = 'Rà soát, biên tập lại văn bản đính kèm theo chuẩn thể thức Nghị định 30/2020/NĐ-CP';
     }
     elCmdInput.focus();
   } catch (err) {
     showToast(`Không đọc được tài liệu: ${err.message}`);
-  } finally {
-    elFileInput.value = '';
   }
+}
+
+document.getElementById('btn-attach-file').addEventListener('click', () => elFileInput.click());
+elFileInput.addEventListener('change', async () => {
+  const file = elFileInput.files && elFileInput.files[0];
+  if (file) await attachDocFile(file);
+  elFileInput.value = '';
 });
 
 document.getElementById('btn-clear-attach').addEventListener('click', () => {
   attachedReferenceText = '';
-  elAttachedBar.classList.add('hidden');
+  refreshContextStrip();
 });
+
+refreshContextStrip();
 
 function getDispatchMode() {
   const checked = document.querySelector('input[name="dispatch-mode"]:checked');
@@ -523,7 +692,11 @@ async function openResult(resultId) {
     if (data.docData) populateEditForm(data.docData);
 
     const docxName = data.docxFilename || `${data.id}.docx`;
-    elResFile.textContent = `results/${docxName}`;
+    elResFile.textContent = data.workspaceSavedDocx
+      ? `Đã lưu trong thư mục: ${data.workspaceSavedDocx}`
+      : `results/${docxName}`;
+    btnResOpenWs.classList.toggle('hidden', !data.workspaceDir);
+    btnResOpenWs.onclick = () => openFolderInExplorer(data.workspaceDir);
     btnResDocx.href = `/api/result/${encodeURIComponent(data.id)}/docx?t=${Date.now()}`;
     btnResDocx.setAttribute('download', docxName);
     btnResPdf.href = `/api/result/${encodeURIComponent(data.id)}/print?t=${Date.now()}`;
@@ -846,6 +1019,11 @@ async function syncState() {
 
 async function dispatchTask(mode, taskText, workerIndex = null) {
   try {
+    const imgsPayload = attachedImages.map(({ name, mimeType, dataBase64 }) => ({
+      name,
+      mimeType,
+      dataBase64,
+    }));
     const resp = await fetch('/api/assign', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -854,6 +1032,8 @@ async function dispatchTask(mode, taskText, workerIndex = null) {
         task: taskText,
         workerIndex,
         referenceText: attachedReferenceText,
+        images: imgsPayload,
+        workspaceDir: activeWorkspaceDir,
       }),
     });
     const data = await resp.json();
@@ -862,7 +1042,9 @@ async function dispatchTask(mode, taskText, workerIndex = null) {
       return;
     }
     attachedReferenceText = '';
-    elAttachedBar.classList.add('hidden');
+    attachedImages.forEach((img) => URL.revokeObjectURL(img.previewUrl));
+    attachedImages = [];
+    refreshContextStrip();
 
     if (mode === 'split-merge') {
       showToast('Đã chia nhiệm vụ lớn: Minh, Lan, Tuấn làm song song → Vy tổng hợp chuẩn NĐ30!');
@@ -883,7 +1065,7 @@ async function dispatchTask(mode, taskText, workerIndex = null) {
 elCmdForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const text = elCmdInput.value.trim();
-  if (!text) return;
+  if (!text && attachedImages.length === 0) return;
   const mode = getDispatchMode();
   const idx = mode === 'direct' ? Number(elCmdAssignee.value) : null;
   elCmdInput.value = '';

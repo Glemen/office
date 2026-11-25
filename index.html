@@ -158,36 +158,67 @@
       </div>
     </div>
 
-    <!-- Attached Reference File Pill (hidden unless file attached) -->
-    <div id="attached-bar" class="attached-bar hidden">
-      <span id="attached-name">Tài liệu đính kèm</span>
-      <button type="button" class="icon-btn-sm" id="btn-clear-attach" aria-label="Bỏ đính kèm">✕</button>
+    <!-- Context Attachments Strip: Workspace Folder + Images + Reference Doc -->
+    <div id="context-strip" class="context-strip hidden">
+      <!-- Active Workspace Folder Badge -->
+      <div id="workspace-pill" class="ctx-pill ws-pill hidden">
+        <span id="workspace-label">Thư mục: ...</span>
+        <button type="button" class="pill-link-btn" id="btn-open-ws-explorer" title="Mở thư mục này trong Windows Explorer">Mở</button>
+        <button type="button" class="icon-btn-sm" id="btn-clear-ws" aria-label="Bỏ chọn thư mục">✕</button>
+      </div>
+
+      <!-- Attached Reference Doc Pill -->
+      <div id="attached-bar" class="ctx-pill doc-pill hidden">
+        <span id="attached-name">Tài liệu đính kèm</span>
+        <button type="button" class="icon-btn-sm" id="btn-clear-attach" aria-label="Bỏ đính kèm">✕</button>
+      </div>
+
+      <!-- Image Thumbnails Strip -->
+      <div id="image-thumbs" class="image-thumbs"></div>
     </div>
 
     <form id="command-form" class="command-form">
+      <input type="file" id="image-attach-input" accept="image/*" multiple class="hidden" />
       <input type="file" id="file-attach-input" accept=".docx,.txt,.md" class="hidden" />
-      <button
-        type="button"
-        class="btn-attach"
-        id="btn-attach-file"
-        title="Đính kèm file .docx / .txt có sẵn để biên tập lại, rà soát NĐ30 hoặc tóm tắt"
-      >
-        + Tài liệu gốc
-      </button>
+
+      <div class="attach-group" role="group" aria-label="Đính kèm hình ảnh, tài liệu và thư mục">
+        <button
+          type="button"
+          class="btn-tool"
+          id="btn-pick-folder"
+          title="Chọn thư mục làm việc (Agent chỉ đọc/tạo/sửa file trong thư mục đó tương đương Antigravity)"
+        >
+          Thư mục
+        </button>
+        <button
+          type="button"
+          class="btn-tool"
+          id="btn-attach-image"
+          title="Gửi hình ảnh (hoặc bấm Ctrl+V dán thẳng ảnh chụp màn hình vào ô chat)"
+        >
+          Ảnh
+        </button>
+        <button
+          type="button"
+          class="btn-tool"
+          id="btn-attach-file"
+          title="Đính kèm file .docx / .txt có sẵn để biên tập lại hoặc rà soát NĐ30"
+        >
+          Tài liệu
+        </button>
+      </div>
 
       <label class="sr-only" for="cmd-assignee">Chọn chuyên viên</label>
       <select id="cmd-assignee" class="cmd-select hidden" title="Chọn bàn nhận việc"></select>
 
-      <label class="sr-only" for="cmd-input">Nội dung văn bản cần làm</label>
-      <input
+      <label class="sr-only" for="cmd-input">Nội dung yêu cầu</label>
+      <textarea
         id="cmd-input"
         class="cmd-input"
-        type="text"
-        required
-        minlength="3"
-        maxlength="500"
-        placeholder="Nhập yêu cầu văn bản (hoặc chọn mẫu nhanh ở trên, đính kèm file gốc để biên tập lại)..."
-      />
+        rows="1"
+        maxlength="2000"
+        placeholder="Chat yêu cầu, dán ảnh (Ctrl+V), hoặc chọn Thư mục để giao việc trực tiếp trong thư mục đó..."
+      ></textarea>
 
       <button type="submit" class="btn-primary cmd-submit" id="btn-cmd-submit">Giao việc</button>
     </form>
@@ -275,6 +306,7 @@
     <div class="modal-foot">
       <span class="mono res-path" id="res-dialog-file">results/...</span>
       <div class="modal-foot-btns">
+        <button type="button" class="btn-outline hidden" id="btn-res-open-ws">Mở thư mục làm việc</button>
         <button type="button" class="btn-outline" id="btn-res-copy">Copy</button>
         <a class="btn-outline" id="btn-res-pdf" target="_blank" rel="noopener">In / PDF chuẩn NĐ30</a>
         <a class="btn-primary" id="btn-res-docx" download>Tải Word (.docx)</a>
